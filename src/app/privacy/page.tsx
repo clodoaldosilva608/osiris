@@ -12,12 +12,13 @@ export const metadata: Metadata = {
  * Every claim on this page is drawn from the code in this repository, not from
  * a template. When a data flow changes, this page changes with it.
  *
- * Reviewed 2026-09-17 against: src/app/api/geo, src/app/api/osint/*,
- * src/app/api/ai/*, src/app/page.tsx, src/components/LiveAlerts.tsx.
+ * Reviewed 2026-09-30 against: src/app/api/geo, src/app/api/osint/*,
+ * src/app/api/ai/*, src/app/page.tsx, src/components/LiveAlerts.tsx,
+ * src/components/DonBotScan.tsx.
  */
 
 const SERVICES: { service: string; sent: string; when: string }[] = [
-  { service: 'ipapi.co, freeipapi.com, ip-api.com', sent: 'Your apparent IP address', when: 'Three seconds after the dashboard loads, to centre the map near you' },
+  { service: 'ipapi.co, freeipapi.com, ip-api.com', sent: 'Your apparent IP address', when: 'As the dashboard loads, to fly the map to your city' },
   { service: 'api.xposedornot.com', sent: 'The email address you search', when: 'Breach lookups' },
   { service: 'cavalier.hudsonrock.com', sent: 'The email or domain you search', when: 'Infostealer lookups' },
   { service: 'internetdb.shodan.io, stat.ripe.net, rdap.org, dns.google', sent: 'The host, IP or domain you search', when: 'Infrastructure lookups' },
@@ -26,6 +27,7 @@ const SERVICES: { service: string; sent: string; when: string }[] = [
   { service: 'otx.alienvault.com, cve.circl.lu, cveawg.mitre.org', sent: 'The indicator or CVE you search', when: 'Threat and vulnerability lookups' },
   { service: 'Google Gemini', sent: 'The feed context you submit for analysis, including Live Alerts headlines', when: 'AI briefing, analysis and overview requests, when the instance has a Gemini key' },
   { service: 'Telegram (cdn*.telesco.pe)', sent: 'Your IP address, as with any image request', when: 'When you expand a Live Alert that has a photo or video preview' },
+  { service: 'DigitalDon (widget.digitaldon.net)', sent: 'The token you search, and your IP address, as with any page you open. No referrer or site name is sent', when: 'Only when you run a DonBot token scan in Markets → Crypto. Its page runs sealed in its own frame, and counts its own usage there' },
 ];
 
 export default function PrivacyPage() {

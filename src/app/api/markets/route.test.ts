@@ -127,7 +127,10 @@ describe('fetchAllQuotes', () => {
     mockUpstream();
     const quotes = await fetchAllQuotes();
     const indices = quotes.filter(q => q.group === 'indices').map(q => q.name);
-    expect(indices).toEqual(['S&P 500', 'Nasdaq 100', 'VIX', 'Dollar Index', 'US 10Y']);
+    expect(indices).toEqual([
+      'S&P 500', 'Nasdaq 100', 'VIX', 'Dollar Index', 'US 10Y',
+      'DAX', 'FTSE 100', 'Euro Stoxx 50', 'Nikkei 225', 'Hang Seng',
+    ]);
   });
 
   /* The bug this guards: the workers start on the first five tickers — which
@@ -139,7 +142,7 @@ describe('fetchAllQuotes', () => {
     const names = quotes.filter(q => q.group === 'indices').map(q => q.name);
     expect(names).toContain('S&P 500');
     expect(names).toContain('VIX');
-    expect(quotes).toHaveLength(28);
+    expect(quotes).toHaveLength(33);
   });
 });
 

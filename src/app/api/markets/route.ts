@@ -34,6 +34,12 @@ const TICKERS: Array<{ symbol: string; name: string; group: string }> = [
   { symbol: '^VIX', name: 'VIX', group: 'indices' },
   { symbol: 'DX-Y.NYB', name: 'Dollar Index', group: 'indices' },
   { symbol: '^TNX', name: 'US 10Y', group: 'indices' },
+  // The rest of the world's trading day, so the board isn't US-only.
+  { symbol: '^GDAXI', name: 'DAX', group: 'indices' },
+  { symbol: '^FTSE', name: 'FTSE 100', group: 'indices' },
+  { symbol: '^STOXX50E', name: 'Euro Stoxx 50', group: 'indices' },
+  { symbol: '^N225', name: 'Nikkei 225', group: 'indices' },
+  { symbol: '^HSI', name: 'Hang Seng', group: 'indices' },
 
   { symbol: 'RTX', name: 'RTX', group: 'stocks' },
   { symbol: 'LMT', name: 'LMT', group: 'stocks' },
