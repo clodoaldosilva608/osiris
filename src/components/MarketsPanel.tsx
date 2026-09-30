@@ -373,7 +373,8 @@ export default function MarketsPanel({ data, spaceWeather }: MarketsPanelProps) 
       {([['prices', 'PRICES'], ['donbot', 'DONBOT · TOKEN SCAN']] as const).map(([id, label]) => (
         <button
           key={id}
-          onClick={() => setCryptoView(id)}
+          // Docked, an open chart sits above the scan and pushes it off-screen.
+          onClick={() => { setCryptoView(id); if (id === 'donbot' && !maximized) setSelected(null); }}
           aria-pressed={cryptoView === id}
           className="px-2 py-1 rounded text-[9px] font-mono font-bold tracking-wider transition-colors"
           style={{
