@@ -14,7 +14,7 @@ export const metadata: Metadata = {
  *
  * Reviewed 2026-09-30 against: src/app/api/geo, src/app/api/osint/*,
  * src/app/api/ai/*, src/app/page.tsx, src/components/LiveAlerts.tsx,
- * src/components/DonBotScan.tsx.
+ * src/components/DonBotScan.tsx, src/lib/live-clouds.ts.
  */
 
 const SERVICES: { service: string; sent: string; when: string }[] = [
@@ -27,6 +27,7 @@ const SERVICES: { service: string; sent: string; when: string }[] = [
   { service: 'otx.alienvault.com, cve.circl.lu, cveawg.mitre.org', sent: 'The indicator or CVE you search', when: 'Threat and vulnerability lookups' },
   { service: 'Google Gemini', sent: 'The feed context you submit for analysis, including Live Alerts headlines', when: 'AI briefing, analysis and overview requests, when the instance has a Gemini key' },
   { service: 'Telegram (cdn*.telesco.pe)', sent: 'Your IP address, as with any image request', when: 'When you expand a Live Alert that has a photo or video preview' },
+  { service: 'NOAA nowCOAST (nowcoast.noaa.gov)', sent: 'Your IP address and the part of the map in view, as with any map tile', when: 'Only while the Live Clouds layer is switched on' },
   { service: 'DigitalDon (widget.digitaldon.net)', sent: 'The token you search, and your IP address, as with any page you open. No referrer or site name is sent', when: 'Only when you run a DonBot token scan in Markets → Crypto. Its page runs sealed in its own frame, and counts its own usage there' },
 ];
 

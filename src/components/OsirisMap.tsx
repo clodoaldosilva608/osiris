@@ -4,6 +4,7 @@ import { buildGeometry, closeRing, drawReducer, initialDrawState, measure, type 
 import { useEffect, useRef, useState, useCallback, memo } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import { installTerrainTileProtocol } from '@/lib/terrain-tiles';
+import { CLOUDS_ATTRIBUTION, CLOUDS_LAYER, CLOUDS_MAX_ZOOM, CLOUDS_SOURCE, cloudsTileTemplate, frameTime, installCloudsProtocol } from '@/lib/live-clouds';
 import { createSatelliteLayer, parseColor, SAT_MAX_ZOOM, type SatPoint } from '@/lib/satellite-layer';
 import { MAP_DEFAULTS, MAP_PALETTE_KEYS, readMapPalette, satColorFor, type MapPalette } from '@/lib/map-palette';
 import { STYLE_EVENT } from '@/lib/style-tokens';
@@ -2637,7 +2638,8 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
           });
         }
         if (!map.getLayer('satellite-layer')) {
-          map.addLayer({ id: 'satellite-layer', type: 'raster', source: 'satellite-tiles', paint: { 'raster-opacity': 0.85 } }, 'day-night-fill');
+          // Under the clouds, if they are on: they belong above the ground.
+          map.addLayer({ id: 'satellite-layer', type: 'raster', source: 'satellite-tiles', paint: { 'raster-opacity': 0.85 } }, map.getLayer(CLOUDS_LAYER) ? CLOUDS_LAYER : 'day-night-fill');
         } else {
           map.setLayoutProperty('satellite-layer', 'visibility', 'visible');
         }
@@ -2650,6 +2652,42 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       console.warn('Style switch failed:', e);
     }
   }, [mapReady, mapStyle]);
+
+  // Live Clouds — NOAA's infrared mosaic, recoloured as cloud; see lib/live-clouds.
+  // Above the basemap and satellite imagery, under the night shade and every
+  // marker. Nothing is fetched until the layer is first switched on.
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+    const map = mapRef.current;
+    if (!activeLayers.live_clouds) {
+      if (map.getLayer(CLOUDS_LAYER)) map.setLayoutProperty(CLOUDS_LAYER, 'visibility', 'none');
+      return;
+    }
+    installCloudsProtocol(maplibregl.addProtocol);
+    let frame = frameTime();
+    const source = map.getSource(CLOUDS_SOURCE) as maplibregl.RasterTileSource | undefined;
+    if (!source) {
+      map.addSource(CLOUDS_SOURCE, {
+        type: 'raster', tiles: [cloudsTileTemplate(frame)], tileSize: 256,
+        maxzoom: CLOUDS_MAX_ZOOM, attribution: CLOUDS_ATTRIBUTION,
+      });
+    } else if (source.tiles[0] !== cloudsTileTemplate(frame)) {
+      source.setTiles([cloudsTileTemplate(frame)]); // it was off while a newer frame landed
+    }
+    if (!map.getLayer(CLOUDS_LAYER)) {
+      map.addLayer({ id: CLOUDS_LAYER, type: 'raster', source: CLOUDS_SOURCE, paint: { 'raster-opacity': 0.85, 'raster-fade-duration': 400 } }, 'day-night-fill');
+    } else {
+      map.setLayoutProperty(CLOUDS_LAYER, 'visibility', 'visible');
+    }
+    // A new frame lands every hour; move to it once it is up.
+    const refresh = setInterval(() => {
+      const next = frameTime();
+      if (next === frame) return;
+      frame = next;
+      (map.getSource(CLOUDS_SOURCE) as maplibregl.RasterTileSource | undefined)?.setTiles([cloudsTileTemplate(frame)]);
+    }, 5 * 60_000);
+    return () => clearInterval(refresh);
+  }, [mapReady, activeLayers.live_clouds]);
 
   // ── DRAWN POLYGONS ──
   useEffect(() => {

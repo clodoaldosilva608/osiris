@@ -375,6 +375,9 @@ export default function Dashboard() {
     sdk_sea: true,
     sdk_air: true,
     sdk_naval: true,
+    /* NOAA's infrared cloud mosaic — see lib/live-clouds. Off until asked for:
+       it veils everything under it. */
+    live_clouds: false,
     terrain_3d: false,
     terrain_elevation: false,
     malware: false,
