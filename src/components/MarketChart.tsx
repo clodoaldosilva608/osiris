@@ -31,12 +31,16 @@ const INTRADAY: Record<Range, boolean> = {
   '1M': false, '6M': false, '1Y': false,
 };
 
-/* The terminal's palette — see MarketsPanel. */
-const UP = '#3DDC84';
-const DOWN = '#FF5A52';
-const AMBER = '#FFA028';
-const GRID = 'rgba(255,255,255,0.045)';
-const AXIS = '#262626';
+const UP = '#26A69A';
+const DOWN = '#EF5350';
+const GRID = 'rgba(255,255,255,0.04)';
+const AXIS = 'rgba(255,255,255,0.12)';
+
+/** A theme colour, read off the page: the canvas cannot resolve a CSS variable itself. */
+function themeColor(name: string, fallback: string): string {
+  if (typeof window === 'undefined') return fallback;
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
 
 /** Prices here span FX pairs to Bitcoin — pick the precision from the value. */
 function priceFormat(v: number): string {
@@ -80,7 +84,7 @@ export default function MarketChart({ symbol, name, onClose, large = false }: Ma
       autoSize: true,
       layout: {
         background: { color: 'transparent' },
-        textColor: '#8C8C8C',
+        textColor: themeColor('--text-secondary', '#9B978E'),
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
         fontSize: 9,
       },
@@ -88,8 +92,8 @@ export default function MarketChart({ symbol, name, onClose, large = false }: Ma
       rightPriceScale: { borderColor: AXIS, scaleMargins: { top: 0.1, bottom: 0.26 } },
       timeScale: { borderColor: AXIS, secondsVisible: false },
       crosshair: {
-        vertLine: { color: 'rgba(255,160,40,0.45)', labelBackgroundColor: AMBER },
-        horzLine: { color: 'rgba(255,160,40,0.45)', labelBackgroundColor: AMBER },
+        vertLine: { color: `rgba(${themeColor('--gold-rgb', '212, 175, 55')}, 0.4)`, labelBackgroundColor: themeColor('--gold-primary', '#D4AF37') },
+        horzLine: { color: `rgba(${themeColor('--gold-rgb', '212, 175, 55')}, 0.4)`, labelBackgroundColor: themeColor('--gold-primary', '#D4AF37') },
       },
       handleScale: { axisPressedMouseMove: false },
     });
@@ -162,7 +166,7 @@ export default function MarketChart({ symbol, name, onClose, large = false }: Ma
     volumeRef.current.setData(candles.map(c => ({
       time: c.time as UTCTimestamp,
       value: c.volume,
-      color: c.close >= c.open ? 'rgba(61,220,132,0.25)' : 'rgba(255,90,82,0.25)',
+      color: c.close >= c.open ? 'rgba(38,166,154,0.28)' : 'rgba(239,83,80,0.28)',
     })));
 
     chartRef.current?.timeScale().fitContent();
@@ -177,18 +181,17 @@ export default function MarketChart({ symbol, name, onClose, large = false }: Ma
   const low = candles.length ? Math.min(...candles.map(c => c.low)) : null;
 
   return (
-    <div className="border border-[#262626] bg-black font-mono">
-      {/* GP — the graph-price pane: what it is, and how it did over the window */}
-      <div className="flex items-center gap-2 h-6 pr-1 border-b border-[#262626]">
-        <span className="h-full px-1.5 flex items-center text-[10px] font-bold tracking-wider text-black" style={{ background: AMBER }}>GP</span>
-        <span className="text-[11px] font-bold text-[#E8E8E8] truncate">{name}</span>
-        <span className="text-[10px] text-[#8C8C8C] shrink-0">{symbol}</span>
+    <div className="rounded-lg border border-[var(--border-primary)] bg-black/30 font-mono overflow-hidden">
+      {/* What is charted, and how it did over the window shown */}
+      <div className="flex items-center gap-2 px-2.5 py-1.5 border-b border-[var(--border-secondary)]">
+        <span className="text-[11px] font-bold text-[var(--text-primary)] truncate">{name}</span>
+        <span className="text-[10px] text-[var(--text-muted)] shrink-0">{symbol}</span>
         {rangeChange !== null && (
           <span className="ml-auto text-[10px] tabular-nums shrink-0" style={{ color: rangeChange >= 0 ? UP : DOWN }}>
             {rangeChange >= 0 ? '+' : '−'}{Math.abs(rangeChange).toFixed(2)}% {range}
           </span>
         )}
-        <button onClick={onClose} className={`${rangeChange === null ? 'ml-auto ' : ''}p-0.5 text-[#8C8C8C] hover:text-white transition-colors shrink-0`} title="Close chart" aria-label="Close chart">
+        <button onClick={onClose} className={`${rangeChange === null ? 'ml-auto ' : ''}p-0.5 text-[var(--text-muted)] hover:text-white transition-colors shrink-0`} title="Close chart" aria-label="Close chart">
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
@@ -198,13 +201,13 @@ export default function MarketChart({ symbol, name, onClose, large = false }: Ma
       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-1 text-[10px] tabular-nums">
         {shown ? (
           <>
-            <span style={{ color: AMBER }}>O <span className="text-[#E8E8E8]">{priceFormat(shown.open)}</span></span>
-            <span style={{ color: AMBER }}>H <span className="text-[#E8E8E8]">{priceFormat(shown.high)}</span></span>
-            <span style={{ color: AMBER }}>L <span className="text-[#E8E8E8]">{priceFormat(shown.low)}</span></span>
-            <span style={{ color: AMBER }}>C <span className="text-white font-bold">{priceFormat(shown.close)}</span></span>
-            {shown.volume > 0 && <span style={{ color: AMBER }}>V <span className="text-[#E8E8E8]">{formatVolume(shown.volume)}</span></span>}
+            <span className="text-[var(--text-muted)]">O <span className="text-[var(--text-secondary)]">{priceFormat(shown.open)}</span></span>
+            <span className="text-[var(--text-muted)]">H <span style={{ color: UP }}>{priceFormat(shown.high)}</span></span>
+            <span className="text-[var(--text-muted)]">L <span style={{ color: DOWN }}>{priceFormat(shown.low)}</span></span>
+            <span className="text-[var(--text-muted)]">C <span className="text-[var(--text-primary)] font-bold">{priceFormat(shown.close)}</span></span>
+            {shown.volume > 0 && <span className="text-[var(--text-muted)]">V <span className="text-[var(--text-secondary)]">{formatVolume(shown.volume)}</span></span>}
           </>
-        ) : <span className="text-[#8C8C8C]">—</span>}
+        ) : <span className="text-[var(--text-muted)]">—</span>}
       </div>
 
       {/* Canvas, with loading and failure drawn over the same box so the
@@ -213,7 +216,7 @@ export default function MarketChart({ symbol, name, onClose, large = false }: Ma
         <div ref={containerRef} className="w-full" style={{ height }} />
 
         {status !== 'ready' && (
-          <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/60 text-[10px] text-[#8C8C8C]">
+          <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/40 text-[10px] text-[var(--text-muted)]">
             {status === 'loading'
               ? <><Loader2 className="w-3 h-3 animate-spin" /> LOADING {range}</>
               : <><AlertTriangle className="w-3 h-3" /> NO {range} DATA FOR {symbol}</>}
@@ -223,8 +226,8 @@ export default function MarketChart({ symbol, name, onClose, large = false }: Ma
 
       {/* Window extremes + range selector */}
       <div className="flex items-center justify-between gap-2 mt-1.5 flex-wrap">
-        <div className="text-[10px] text-[#8C8C8C] tabular-nums">
-          {high !== null && low !== null && <>{range} HI <span className="text-[#E8E8E8]">{priceFormat(high)}</span> · LO <span className="text-[#E8E8E8]">{priceFormat(low)}</span></>}
+        <div className="text-[9px] text-[var(--text-muted)] tabular-nums">
+          {high !== null && low !== null && <>{range} H <span className="text-[var(--text-secondary)]">{priceFormat(high)}</span> · L <span className="text-[var(--text-secondary)]">{priceFormat(low)}</span></>}
         </div>
         {/* Seven ranges will not fit one line in the docked panel — let them wrap. */}
         <div className="flex gap-0.5 flex-wrap justify-end">
@@ -233,10 +236,11 @@ export default function MarketChart({ symbol, name, onClose, large = false }: Ma
               key={r}
               onClick={() => setRange(r)}
               aria-pressed={range === r}
-              className={`px-1.5 py-0.5 text-[10px] font-bold tracking-wider transition-colors ${
-                range === r ? 'text-black' : 'text-[#8C8C8C] hover:text-[#E8E8E8] hover:bg-white/5'
+              className={`px-1.5 py-0.5 rounded text-[9px] tracking-wider transition-colors border ${
+                range === r
+                  ? 'bg-[var(--hover-accent)] text-[var(--gold-primary)] border-[var(--border-active)]'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] border-transparent'
               }`}
-              style={range === r ? { background: AMBER } : undefined}
             >
               {r}
             </button>
