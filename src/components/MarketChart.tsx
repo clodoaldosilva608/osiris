@@ -31,10 +31,12 @@ const INTRADAY: Record<Range, boolean> = {
   '1M': false, '6M': false, '1Y': false,
 };
 
-const UP = '#26A69A';
-const DOWN = '#D32F2F';
-const GRID = 'rgba(255,255,255,0.04)';
-const AXIS = 'rgba(255,255,255,0.12)';
+/* The terminal's palette — see MarketsPanel. */
+const UP = '#3DDC84';
+const DOWN = '#FF5A52';
+const AMBER = '#FFA028';
+const GRID = 'rgba(255,255,255,0.045)';
+const AXIS = '#262626';
 
 /** Prices here span FX pairs to Bitcoin — pick the precision from the value. */
 function priceFormat(v: number): string {
@@ -78,7 +80,7 @@ export default function MarketChart({ symbol, name, onClose, large = false }: Ma
       autoSize: true,
       layout: {
         background: { color: 'transparent' },
-        textColor: '#78909C',
+        textColor: '#8C8C8C',
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
         fontSize: 9,
       },
@@ -86,8 +88,8 @@ export default function MarketChart({ symbol, name, onClose, large = false }: Ma
       rightPriceScale: { borderColor: AXIS, scaleMargins: { top: 0.1, bottom: 0.26 } },
       timeScale: { borderColor: AXIS, secondsVisible: false },
       crosshair: {
-        vertLine: { color: 'rgba(212,175,55,0.4)', labelBackgroundColor: '#D4AF37' },
-        horzLine: { color: 'rgba(212,175,55,0.4)', labelBackgroundColor: '#D4AF37' },
+        vertLine: { color: 'rgba(255,160,40,0.45)', labelBackgroundColor: AMBER },
+        horzLine: { color: 'rgba(255,160,40,0.45)', labelBackgroundColor: AMBER },
       },
       handleScale: { axisPressedMouseMove: false },
     });
@@ -160,7 +162,7 @@ export default function MarketChart({ symbol, name, onClose, large = false }: Ma
     volumeRef.current.setData(candles.map(c => ({
       time: c.time as UTCTimestamp,
       value: c.volume,
-      color: c.close >= c.open ? 'rgba(38,166,154,0.28)' : 'rgba(211,47,47,0.28)',
+      color: c.close >= c.open ? 'rgba(61,220,132,0.25)' : 'rgba(255,90,82,0.25)',
     })));
 
     chartRef.current?.timeScale().fitContent();
@@ -175,36 +177,34 @@ export default function MarketChart({ symbol, name, onClose, large = false }: Ma
   const low = candles.length ? Math.min(...candles.map(c => c.low)) : null;
 
   return (
-    <div className="rounded-lg border border-[var(--border-primary)] bg-black/30 p-2">
-      {/* Identity + range performance */}
-      <div className="flex items-start justify-between mb-1.5">
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="text-[10px] font-mono font-bold text-[var(--text-primary)] truncate">{name}</span>
-            <span className="text-[9px] font-mono text-[var(--text-muted)]">{symbol}</span>
-          </div>
-          {rangeChange !== null && (
-            <div className="text-[10px] font-mono tabular-nums" style={{ color: rangeChange >= 0 ? UP : DOWN }}>
-              {rangeChange >= 0 ? '+' : ''}{rangeChange.toFixed(2)}% over {range}
-            </div>
-          )}
-        </div>
-        <button onClick={onClose} className="text-[var(--text-muted)] hover:text-white transition-colors shrink-0" title="Close chart">
+    <div className="border border-[#262626] bg-black font-mono">
+      {/* GP — the graph-price pane: what it is, and how it did over the window */}
+      <div className="flex items-center gap-2 h-6 pr-1 border-b border-[#262626]">
+        <span className="h-full px-1.5 flex items-center text-[10px] font-bold tracking-wider text-black" style={{ background: AMBER }}>GP</span>
+        <span className="text-[11px] font-bold text-[#E8E8E8] truncate">{name}</span>
+        <span className="text-[10px] text-[#8C8C8C] shrink-0">{symbol}</span>
+        {rangeChange !== null && (
+          <span className="ml-auto text-[10px] tabular-nums shrink-0" style={{ color: rangeChange >= 0 ? UP : DOWN }}>
+            {rangeChange >= 0 ? '+' : '−'}{Math.abs(rangeChange).toFixed(2)}% {range}
+          </span>
+        )}
+        <button onClick={onClose} className={`${rangeChange === null ? 'ml-auto ' : ''}p-0.5 text-[#8C8C8C] hover:text-white transition-colors shrink-0`} title="Close chart" aria-label="Close chart">
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
 
+      <div className="px-2 pt-1.5 pb-2">
       {/* OHLC readout — tracks the crosshair, resting on the latest bar */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-1 text-[9px] font-mono tabular-nums">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-1 text-[10px] tabular-nums">
         {shown ? (
           <>
-            <span className="text-[var(--text-muted)]">O <span className="text-[var(--text-secondary)]">{priceFormat(shown.open)}</span></span>
-            <span className="text-[var(--text-muted)]">H <span style={{ color: UP }}>{priceFormat(shown.high)}</span></span>
-            <span className="text-[var(--text-muted)]">L <span style={{ color: DOWN }}>{priceFormat(shown.low)}</span></span>
-            <span className="text-[var(--text-muted)]">C <span className="text-[var(--text-primary)] font-bold">{priceFormat(shown.close)}</span></span>
-            {shown.volume > 0 && <span className="text-[var(--text-muted)]">V <span className="text-[var(--text-secondary)]">{formatVolume(shown.volume)}</span></span>}
+            <span style={{ color: AMBER }}>O <span className="text-[#E8E8E8]">{priceFormat(shown.open)}</span></span>
+            <span style={{ color: AMBER }}>H <span className="text-[#E8E8E8]">{priceFormat(shown.high)}</span></span>
+            <span style={{ color: AMBER }}>L <span className="text-[#E8E8E8]">{priceFormat(shown.low)}</span></span>
+            <span style={{ color: AMBER }}>C <span className="text-white font-bold">{priceFormat(shown.close)}</span></span>
+            {shown.volume > 0 && <span style={{ color: AMBER }}>V <span className="text-[#E8E8E8]">{formatVolume(shown.volume)}</span></span>}
           </>
-        ) : <span className="text-[var(--text-muted)]">—</span>}
+        ) : <span className="text-[#8C8C8C]">—</span>}
       </div>
 
       {/* Canvas, with loading and failure drawn over the same box so the
@@ -213,7 +213,7 @@ export default function MarketChart({ symbol, name, onClose, large = false }: Ma
         <div ref={containerRef} className="w-full" style={{ height }} />
 
         {status !== 'ready' && (
-          <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/40 text-[10px] font-mono text-[var(--text-muted)]">
+          <div className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/60 text-[10px] text-[#8C8C8C]">
             {status === 'loading'
               ? <><Loader2 className="w-3 h-3 animate-spin" /> LOADING {range}</>
               : <><AlertTriangle className="w-3 h-3" /> NO {range} DATA FOR {symbol}</>}
@@ -223,8 +223,8 @@ export default function MarketChart({ symbol, name, onClose, large = false }: Ma
 
       {/* Window extremes + range selector */}
       <div className="flex items-center justify-between gap-2 mt-1.5 flex-wrap">
-        <div className="text-[9px] font-mono text-[var(--text-muted)] tabular-nums">
-          {high !== null && low !== null && <>H {priceFormat(high)} · L {priceFormat(low)}</>}
+        <div className="text-[10px] text-[#8C8C8C] tabular-nums">
+          {high !== null && low !== null && <>{range} HI <span className="text-[#E8E8E8]">{priceFormat(high)}</span> · LO <span className="text-[#E8E8E8]">{priceFormat(low)}</span></>}
         </div>
         {/* Seven ranges will not fit one line in the docked panel — let them wrap. */}
         <div className="flex gap-0.5 flex-wrap justify-end">
@@ -232,16 +232,17 @@ export default function MarketChart({ symbol, name, onClose, large = false }: Ma
             <button
               key={r}
               onClick={() => setRange(r)}
-              className={`px-1.5 py-0.5 rounded text-[9px] font-mono tracking-wider transition-all ${
-                range === r
-                  ? 'bg-[var(--hover-accent)] text-[var(--gold-primary)] border border-[var(--border-primary)]'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)] border border-transparent'
+              aria-pressed={range === r}
+              className={`px-1.5 py-0.5 text-[10px] font-bold tracking-wider transition-colors ${
+                range === r ? 'text-black' : 'text-[#8C8C8C] hover:text-[#E8E8E8] hover:bg-white/5'
               }`}
+              style={range === r ? { background: AMBER } : undefined}
             >
               {r}
             </button>
           ))}
         </div>
+      </div>
       </div>
     </div>
   );

@@ -100,6 +100,29 @@ describe('fetchQuote', () => {
     expect((await fetchQuote(TICKER))?.market_open).toBe(false);
   });
 
+  // A terminal row from the same response: no second request per symbol.
+  it('carries the day range, volume, trade time and 52-week range Yahoo sends', async () => {
+    const res = chartResponse({ price: 110, closes: [100, 110] });
+    const payload = await res.json();
+    Object.assign(payload.chart.result[0].meta, {
+      regularMarketDayHigh: 112.5, regularMarketDayLow: 104.25, regularMarketVolume: 892732,
+      regularMarketTime: 1790884802, fiftyTwoWeekHigh: 692, fiftyTwoWeekLow: 437.25,
+      fullExchangeName: 'NYSE', shortName: 'Lockheed Martin Corporation',
+    });
+    mockFetch({ ok: true, json: async () => payload });
+    const q = await fetchQuote(TICKER);
+    expect(q).toMatchObject({
+      prev_close: 100, day_high: 112.5, day_low: 104.25, volume: 892732, time: 1790884802,
+      high_52w: 692, low_52w: 437.25, exchange: 'NYSE', description: 'Lockheed Martin Corporation',
+    });
+  });
+
+  // Two decimals cut EUR/USD from 1.0834 to 1.08.
+  it('keeps four decimals on a price', async () => {
+    mockFetch(chartResponse({ price: 1.08341, closes: [1.07, 1.08341] }));
+    expect((await fetchQuote(TICKER))?.price).toBe(1.0834);
+  });
+
   it('returns null on a non-ok response instead of throwing', async () => {
     mockFetch({ ok: false, json: async () => ({}) });
     expect(await fetchQuote(TICKER)).toBeNull();
@@ -149,7 +172,7 @@ describe('fetchAllQuotes', () => {
 describe('groupQuotes', () => {
   const quote = (name: string, group: string): Quote => ({
     group, name, symbol: name, price: 1, change_percent: 0, up: true,
-    spark: [], currency: 'USD', market_open: true,
+    spark: [], currency: 'USD', market_open: true, prev_close: 1,
   });
 
   it('files each quote under its section, keyed by display name', () => {
