@@ -27,8 +27,8 @@ export interface Quote {
   market_open: boolean;
 }
 
-/** Display name and section for every instrument we track. */
-const TICKERS: Array<{ symbol: string; name: string; group: string }> = [
+/** Display name and section for every instrument we track. Exported: the chart route serves these and nothing else. */
+export const TICKERS: Array<{ symbol: string; name: string; group: string }> = [
   { symbol: 'ES=F', name: 'S&P 500', group: 'indices' },
   { symbol: 'NQ=F', name: 'Nasdaq 100', group: 'indices' },
   { symbol: '^VIX', name: 'VIX', group: 'indices' },

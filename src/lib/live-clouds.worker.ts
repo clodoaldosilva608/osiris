@@ -7,7 +7,7 @@
  */
 
 import {
-  REF_HEIGHT, REF_WIDTH,
+  PADDED, REF_HEIGHT, REF_WIDTH,
   applyLut, clearSky, isCloudTile, matchLut, referenceFootprint, referenceHistogram, referenceUrl,
   renderClouds, tileClearSky, tileDaylight, tileHistogram, tileUrl,
   type Band, type ClearSky, type CloudImage, type Tile,
@@ -32,6 +32,13 @@ async function pixels(url: string, signal?: AbortSignal): Promise<Uint8ClampedAr
   ctx.drawImage(bitmap, 0, 0);
   bitmap.close();
   return ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+}
+
+/** A tile's pixels, refused unless NOAA sent the size asked for: anything else is an error page, not imagery. */
+async function tilePixels(url: string, signal: AbortSignal): Promise<Uint8ClampedArray> {
+  const rgba = await pixels(url, signal);
+  if (rgba.length !== PADDED * PADDED * 4) throw new Error('Tile came back the wrong size');
+  return rgba;
 }
 
 /** Each band's world reference for a frame, fetched once and shared by every tile of it. */
@@ -77,8 +84,8 @@ async function draw(tile: Tile, signal: AbortSignal): Promise<CloudImage> {
   // The visible band is black at night; a tile with no daylight skips it.
   const daylit = tileDaylight(tile.z, tile.x, tile.y, time) > 0;
   const [ir, vis, refIr, refVis] = await Promise.all([
-    pixels(tileUrl('ir', tile), signal),
-    daylit ? pixels(tileUrl('vis', tile), signal) : null,
+    tilePixels(tileUrl('ir', tile), signal),
+    daylit ? tilePixels(tileUrl('vis', tile), signal) : null,
     reference('ir', tile.time),
     daylit ? reference('vis', tile.time) : null,
   ]);
