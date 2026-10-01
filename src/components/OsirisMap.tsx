@@ -4,7 +4,8 @@ import { buildGeometry, closeRing, drawReducer, initialDrawState, measure, type 
 import { useEffect, useRef, useState, useCallback, memo } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import { installTerrainTileProtocol } from '@/lib/terrain-tiles';
-import { CLOUDS_ATTRIBUTION, CLOUDS_LAYER, CLOUDS_MAX_ZOOM, CLOUDS_SOURCE, cloudsTileTemplate, frameTime, installCloudsProtocol } from '@/lib/live-clouds';
+import { CLOUDS_ATTRIBUTION, CLOUDS_LAYER, CLOUDS_MAX_ZOOM, CLOUDS_SOURCE, cloudsTileTemplate, frameTime } from '@/lib/live-clouds';
+import { installCloudsProtocol } from '@/lib/live-clouds-protocol';
 import { createSatelliteLayer, parseColor, SAT_MAX_ZOOM, type SatPoint } from '@/lib/satellite-layer';
 import { MAP_DEFAULTS, MAP_PALETTE_KEYS, readMapPalette, satColorFor, type MapPalette } from '@/lib/map-palette';
 import { STYLE_EVENT } from '@/lib/style-tokens';
@@ -2638,8 +2639,7 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
           });
         }
         if (!map.getLayer('satellite-layer')) {
-          // Under the clouds, if they are on: they belong above the ground.
-          map.addLayer({ id: 'satellite-layer', type: 'raster', source: 'satellite-tiles', paint: { 'raster-opacity': 0.85 } }, map.getLayer(CLOUDS_LAYER) ? CLOUDS_LAYER : 'day-night-fill');
+          map.addLayer({ id: 'satellite-layer', type: 'raster', source: 'satellite-tiles', paint: { 'raster-opacity': 0.85 } }, 'day-night-fill');
         } else {
           map.setLayoutProperty('satellite-layer', 'visibility', 'visible');
         }
@@ -2653,9 +2653,11 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     }
   }, [mapReady, mapStyle]);
 
-  // Live Clouds — NOAA's infrared mosaic, recoloured as cloud; see lib/live-clouds.
-  // Above the basemap and satellite imagery, under the night shade and every
-  // marker. Nothing is fetched until the layer is first switched on.
+  // Live Clouds — NOAA's satellite mosaic, drawn as lit cloud; see lib/live-clouds.
+  // Under the night shade and every marker. On the map they also sit under the
+  // place names, as on any weather map, so a storm never hides a city's name;
+  // on SAT they go above the imagery, which covers those names anyway. Nothing
+  // is fetched until the layer is first switched on.
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
     const map = mapRef.current;
@@ -2675,10 +2677,13 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       source.setTiles([cloudsTileTemplate(frame)]); // it was off while a newer frame landed
     }
     if (!map.getLayer(CLOUDS_LAYER)) {
-      map.addLayer({ id: CLOUDS_LAYER, type: 'raster', source: CLOUDS_SOURCE, paint: { 'raster-opacity': 0.85, 'raster-fade-duration': 400 } }, 'day-night-fill');
+      map.addLayer({ id: CLOUDS_LAYER, type: 'raster', source: CLOUDS_SOURCE, paint: { 'raster-opacity': 0.95, 'raster-fade-duration': 400 } }, 'day-night-fill');
     } else {
       map.setLayoutProperty(CLOUDS_LAYER, 'visibility', 'visible');
     }
+    const satellite = map.getLayer('satellite-layer') && map.getLayoutProperty('satellite-layer', 'visibility') !== 'none';
+    const firstLabel = map.getStyle().layers.find(layer => layer.type === 'symbol')?.id;
+    map.moveLayer(CLOUDS_LAYER, satellite || !firstLabel ? 'day-night-fill' : firstLabel);
     // A new frame lands every hour; move to it once it is up.
     const refresh = setInterval(() => {
       const next = frameTime();
@@ -2687,7 +2692,7 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       (map.getSource(CLOUDS_SOURCE) as maplibregl.RasterTileSource | undefined)?.setTiles([cloudsTileTemplate(frame)]);
     }, 5 * 60_000);
     return () => clearInterval(refresh);
-  }, [mapReady, activeLayers.live_clouds]);
+  }, [mapReady, activeLayers.live_clouds, mapStyle]);
 
   // ── DRAWN POLYGONS ──
   useEffect(() => {

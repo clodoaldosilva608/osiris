@@ -56,7 +56,7 @@ const LAYER_GROUPS: LayerGroupDef[] = [
     icon: Network,
     layers: [
       { key: 'sdk_sea', label: 'Maritime Lines', dataKey: 'sdk_entities' },
-      { key: 'live_clouds', label: 'Live Clouds', description: 'NOAA satellite infrared · hourly', dataKey: '' },
+      { key: 'live_clouds', label: 'Live Clouds', description: 'NOAA satellites · lit in 3D · hourly', dataKey: '' },
     ],
   },
   {
