@@ -28,7 +28,7 @@ const SERVICES: { service: string; sent: string; when: string }[] = [
   { service: 'Google Gemini', sent: 'The feed context you submit for analysis, including Live Alerts headlines', when: 'AI briefing, analysis and overview requests, when the instance has a Gemini key' },
   { service: 'Telegram (cdn*.telesco.pe)', sent: 'Your IP address, as with any image request', when: 'When you expand a Live Alert that has a photo or video preview' },
   { service: 'NOAA nowCOAST (nowcoast.noaa.gov)', sent: 'Your IP address and the part of the map in view, as with any map tile', when: 'Only while the Live Clouds layer is switched on' },
-  { service: 'DigitalDon (widget.digitaldon.net)', sent: 'The token you search, and your IP address, as with any page you open. No referrer or site name is sent', when: 'Only when you run a DonBot token scan in Markets → Crypto. Its page runs sealed in its own frame, and counts its own usage there' },
+  { service: 'DigitalDon (widget.digitaldon.net)', sent: 'The token you search, and your IP address, as with any page you open. No referrer or site name is sent', when: 'Only when you run a DonBot token scan, in Markets → Crypto or RECON → DonBot. Its page runs sealed in its own frame, and counts its own usage there' },
 ];
 
 export default function PrivacyPage() {

@@ -8,17 +8,22 @@ import {
 } from '@/lib/donbot';
 
 /**
- * Markets → Crypto → DonBot: DigitalDon's token analyzer, embedded without its
- * script. See lib/donbot for what crosses the boundary and why.
+ * DonBot, in Markets → Crypto and in RECON: DigitalDon's token analyzer,
+ * embedded without its script. See lib/donbot for what crosses the boundary and why.
  */
 
 const ACCENT = '#F7931A';
 const INITIAL_HEIGHT = 420;
 
-export default function DonBotScan() {
-  const [input, setInput] = useState('');
+export default function DonBotScan({ initial = null, onScan }: {
+  /** A scan to open on — how a host that remounts this keeps the token it was showing. */
+  initial?: string | null;
+  /** Told of every scan run and every close, so a host can hand it back as `initial`. */
+  onScan?: (query: string | null) => void;
+} = {}) {
+  const [input, setInput] = useState(initial ?? '');
   /** What the frame is showing; null means no frame at all. */
-  const [query, setQuery] = useState<string | null>(null);
+  const [query, setQuery] = useState<string | null>(initial);
   const [height, setHeight] = useState(INITIAL_HEIGHT);
   const [loaded, setLoaded] = useState(false);
   const [result, setResult] = useState<DonbotResult | null>(null);
@@ -45,11 +50,13 @@ export default function DonBotScan() {
     setLoaded(false);
     setHeight(INITIAL_HEIGHT);
     setQuery(q);
+    onScan?.(q);
   };
 
   const close = () => {
     setQuery(null);
     setResult(null);
+    onScan?.(null);
   };
 
   return (
