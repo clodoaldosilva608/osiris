@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import {
-  PAD, PADDED, REF_HEIGHT, REF_WIDTH, TILE,
-  applyLut, cloudsTileTemplate, frameTime, matchLut, parseCloudsUrl, referenceFootprint,
-  referenceHistogram, referenceUrl, renderClouds, sunElevation, tileBbox, tileDaylight,
-  tileHistogram, tileUrl,
+  CLOUD_BASE_M, CLOUD_RELIEF_M, PAD, PADDED, REF_HEIGHT, REF_WIDTH, TILE,
+  TROPICAL_CLEAR, applyLut, clearSky, clearSkyAt, cloudAltitude, cloudLift, cloudOpacity, frameTime, tileClearSky, isCloudTile, matchLut, referenceFootprint,
+  referenceHistogram, referenceUrl, renderClouds, shadowOffset, sunElevation, tileBbox,
+  tileDaylight, tileHistogram, tileUrl,
 } from './live-clouds';
+import { ancestorUv } from './live-clouds-layer';
 
 const HALF = 20037508.342789244;
 const TIME = '2026-09-22T12:00:00Z'; // equinox noon: the sun is over 0°, 0°
@@ -39,25 +40,78 @@ describe('frameTime', () => {
   });
 });
 
-describe('parseCloudsUrl', () => {
-  const template = cloudsTileTemplate('2026-09-30T23:00:00Z');
-  const url = (z: number, x: number, y: number) => template.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y));
+describe('isCloudTile', () => {
+  const frame = '2026-09-30T23:00:00Z';
 
-  it('reads back what the template produces', () => {
-    expect(parseCloudsUrl(url(3, 4, 2))).toEqual({ z: 3, x: 4, y: 2, time: '2026-09-30T23:00:00Z' });
+  it('accepts a real tile of an hourly frame', () => {
+    expect(isCloudTile({ z: 3, x: 4, y: 2, time: frame })).toBe(true);
   });
 
   it('rejects a tile outside its zoom level', () => {
-    expect(parseCloudsUrl(url(2, 4, 0))).toBeNull();
+    expect(isCloudTile({ z: 2, x: 4, y: 0, time: frame })).toBe(false);
   });
 
   it('rejects zooms past the imagery', () => {
-    expect(parseCloudsUrl(url(9, 0, 0))).toBeNull();
+    expect(isCloudTile({ z: 9, x: 0, y: 0, time: frame })).toBe(false);
   });
 
-  it('rejects anything that is not one of ours', () => {
-    expect(parseCloudsUrl('osiris-clouds://1/0/0?time=now')).toBeNull();
-    expect(parseCloudsUrl('https://example.com/1/0/0')).toBeNull();
+  it('rejects a time that is not on the hour', () => {
+    expect(isCloudTile({ z: 1, x: 0, y: 0, time: '2026-09-30T23:15:00Z' })).toBe(false);
+    expect(isCloudTile({ z: 1, x: 0, y: 0, time: 'now' })).toBe(false);
+  });
+});
+
+describe('hanging the clouds', () => {
+  it('puts low cloud at the base and the highest tops a full relief above it', () => {
+    expect(cloudAltitude(0)).toBe(CLOUD_BASE_M);
+    expect(cloudAltitude(1)).toBe(CLOUD_BASE_M + CLOUD_RELIEF_M);
+    expect(cloudAltitude(7)).toBe(CLOUD_BASE_M + CLOUD_RELIEF_M);
+  });
+
+  it('draws the clouds whole from space and not at all at street level', () => {
+    expect(cloudOpacity(2)).toBe(1);
+    expect(cloudOpacity(6)).toBe(1);
+    expect(cloudOpacity(11)).toBe(0);
+    expect(cloudOpacity(15)).toBe(0);
+  });
+
+  it('lifts the deck more the further out the view, and not at all close in', () => {
+    expect(cloudLift(6)).toBe(1);
+    expect(cloudLift(9)).toBe(1);
+    expect(cloudLift(4)).toBeGreaterThan(1);
+    expect(cloudLift(0)).toBeLessThanOrEqual(2.5);
+  });
+
+  /* The complaint that started this: at town zoom the deck painted over every place. */
+  it('thins them out on the way down', () => {
+    let last = 1;
+    for (let z = 6; z <= 11; z += 0.25) {
+      expect(cloudOpacity(z)).toBeLessThanOrEqual(last);
+      last = cloudOpacity(z);
+    }
+    expect(cloudOpacity(8.5)).toBeLessThan(0.6);
+  });
+
+  it('casts a shadow that reaches further across a tile the closer in the tile is', () => {
+    expect(shadowOffset(6, 0) / shadowOffset(5, 0)).toBeCloseTo(2);
+  });
+
+  // A tile is narrower on the ground toward the poles, so the same reach covers more of it.
+  it('casts it further across a tile at high latitude', () => {
+    expect(shadowOffset(5, Math.PI / 3)).toBeGreaterThan(shadowOffset(5, 0));
+  });
+
+  it('draws a tile on its own texture across the inner square, inside the margin', () => {
+    expect(ancestorUv(5, 9, 0)).toEqual([PAD / PADDED, PAD / PADDED, TILE / PADDED, TILE / PADDED]);
+  });
+
+  it('draws a tile on its parent’s texture over the right quarter', () => {
+    // 3, 2 at one level down is the parent's east half, north half.
+    const [ox, oy, sx, sy] = ancestorUv(3, 2, 1);
+    expect(ox).toBeCloseTo((PAD + TILE / 2) / PADDED);
+    expect(oy).toBeCloseTo(PAD / PADDED);
+    expect(sx).toBeCloseTo(TILE / 2 / PADDED);
+    expect(sy).toBeCloseTo(TILE / 2 / PADDED);
   });
 });
 
@@ -157,6 +211,55 @@ describe('matching a tile to the reference', () => {
   });
 });
 
+describe('clear sky', () => {
+  /** A reference whose greys run lo..hi across each row, one range north of the equator and another south. */
+  const reference = (north: [number, number], south: [number, number]) => {
+    const grey = new Uint8Array(REF_WIDTH * REF_HEIGHT);
+    for (let j = 0; j < REF_HEIGHT; j++) {
+      const [lo, hi] = j < REF_HEIGHT / 2 ? north : south;
+      for (let i = 0; i < REF_WIDTH; i++) grey[j * REF_WIDTH + i] = lo + ((hi - lo) * (i % 128)) / 127;
+    }
+    return grey;
+  };
+
+  it('takes the warm end of each cell as clear ground', () => {
+    const sky = clearSky(reference([60, 200], [130, 230]));
+    expect(clearSkyAt(sky, 1000, 100)).toBeCloseTo(60 + 0.1 * 140, -1);
+    expect(clearSkyAt(sky, 1000, REF_HEIGHT - 100)).toBeCloseTo(130 + 0.1 * 100, -1);
+  });
+
+  it('lends bands outside the satellites\u2019 view the nearest one with data', () => {
+    const grey = reference([60, 200], [60, 200]);
+    grey.fill(0, 0, REF_WIDTH * 100); // the top hundred rows: nothing seen
+    const sky = clearSky(grey);
+    expect(clearSkyAt(sky, 1000, 0)).toBeCloseTo(clearSkyAt(sky, 1000, 200), 0);
+  });
+
+  /* A sector the satellites see as falsely cold — the Arctic edge-on — may read
+     colder than the rest of its latitude, but only so far, or a sector under
+     one great storm would count the storm as clear. */
+  it('lets one region read colder than its latitude, within limits', () => {
+    const grey = reference([60, 200], [60, 200]);
+    for (let j = 0; j < REF_HEIGHT; j++) for (let i = 0; i < 128; i++) grey[j * REF_WIDTH + i] = 200;
+    const sky = clearSky(grey);
+    const band = clearSkyAt(sky, 1000, 300);
+    expect(clearSkyAt(sky, 64, 300)).toBeGreaterThan(band + 20);
+    expect(clearSkyAt(sky, 64, 300)).toBeLessThanOrEqual(band + 30.5);
+  });
+
+  it('wraps around in longitude, so the date line has no seam', () => {
+    const sky = clearSky(reference([60, 200], [60, 200]));
+    expect(clearSkyAt(sky, 0, 300)).toBeCloseTo(clearSkyAt(sky, REF_WIDTH, 300), 5);
+  });
+
+  it('gives every pixel of a tile its own clear sky', () => {
+    const sky = clearSky(reference([60, 200], [130, 230]));
+    const tile = tileClearSky(0, 0, 0, sky);
+    expect(tile.length).toBe(PADDED * PADDED);
+    expect(tile[(PADDED - 1) * PADDED + 100]).toBeGreaterThan(tile[100]);
+  });
+});
+
 describe('sunlight', () => {
   const deg = Math.PI / 180;
 
@@ -179,19 +282,41 @@ describe('renderClouds', () => {
   // Tile 4/3 at zoom 3 is in full daylight at NOON; tile 0/3 is in darkness.
   const day = { z: 3, x: 4, y: 3, time: NOON };
   const night = { z: 3, x: 0, y: 3, time: NOON };
-  const px = (out: Uint8ClampedArray, i: number, j: number) => Array.from(out.subarray((j * TILE + i) * 4, (j * TILE + i) * 4 + 4));
+  /** A pixel of the output by its position inside the tile, past the margin. */
+  const at = (i: number, j: number) => ((j + PAD) * PADDED + i + PAD);
+  const px = (rgba: Uint8ClampedArray, i: number, j: number) => Array.from(rgba.subarray(at(i, j) * 4, at(i, j) * 4 + 4));
+
+  it('sends the margin out with the tile', () => {
+    const { rgba, height } = renderClouds({ ir: tileOf(() => 230), vis: null, ...night });
+    expect(rgba.length).toBe(PADDED * PADDED * 4);
+    expect(height.length).toBe(PADDED * PADDED);
+  });
 
   it('draws clear, warm ground as nothing at all', () => {
-    const out = renderClouds({ ir: tileOf(() => 70), vis: null, ...night });
-    expect(out.every((v, k) => k % 4 !== 3 || v === 0)).toBe(true);
+    const { rgba } = renderClouds({ ir: tileOf(() => 70), vis: null, ...night });
+    expect(rgba.every((v, k) => k % 4 !== 3 || v === 0)).toBe(true);
   });
 
   it('draws a deck of cold cloud opaque, and evenly lit when its top is flat', () => {
-    const out = renderClouds({ ir: tileOf(() => 230), vis: null, ...night });
-    const [r, g, b, a] = px(out, 128, 128);
+    const { rgba } = renderClouds({ ir: tileOf(() => 230), vis: null, ...night });
+    const [r, g, b, a] = px(rgba, 128, 128);
     expect(a).toBe(255);
     expect(r).toBeGreaterThan(200);
-    expect(px(out, 10, 10)).toEqual([r, g, b, a]);
+    expect(px(rgba, 10, 10)).toEqual([r, g, b, a]);
+  });
+
+  it('lifts cold, high cloud above warm, low cloud', () => {
+    const high = renderClouds({ ir: tileOf(() => 240), vis: null, ...night }).height[at(128, 128)];
+    const low = renderClouds({ ir: tileOf(() => 120), vis: null, ...night }).height[at(128, 128)];
+    expect(high).toBeGreaterThan(200);
+    expect(low).toBeLessThan(40);
+  });
+
+  /* One cold pixel used to lift one vertex into a spike; the lift is smoothed. */
+  it('raises a lone cold pixel as a low dome, not a spike', () => {
+    const centre = PAD + 128;
+    const { height } = renderClouds({ ir: tileOf((i, j) => (i === centre && j === centre ? 250 : 70)), vis: null, ...night });
+    expect(height[at(128, 128)]).toBeLessThan(40);
   });
 
   /* A ridge whose crest runs north-east to south-west through the middle of the
@@ -199,33 +324,37 @@ describe('renderClouds', () => {
   it('lights the slope facing north-west and shades the one facing away', () => {
     const crest = 2 * (PAD + 128);
     const ridge = (i: number, j: number) => 255 - Math.min(150, Math.abs(i + j - crest) * 3);
-    const out = renderClouds({ ir: tileOf(ridge), vis: null, ...night });
-    const facingLight = px(out, 118, 118);
-    const facingAway = px(out, 138, 138);
-    expect(facingLight[0]).toBeGreaterThan(facingAway[0] + 20);
+    const { rgba } = renderClouds({ ir: tileOf(ridge), vis: null, ...night });
+    expect(px(rgba, 118, 118)[0]).toBeGreaterThan(px(rgba, 138, 138)[0] + 20);
   });
 
-  it('casts a shadow to the south-east of a cloud and none to the north-west', () => {
-    const centre = PAD + 128;
-    const blob = (i: number, j: number) => (Math.hypot(i - centre, j - centre) < 30 ? 240 : 60);
-    const out = renderClouds({ ir: tileOf(blob), vis: null, ...night });
-    // Just clear of the cloud's edge, on either diagonal.
-    const [, , , southEast] = px(out, 128 + 23, 128 + 23);
-    const [, , , northWest] = px(out, 128 - 23, 128 - 23);
-    expect(southEast).toBeGreaterThan(20);
-    expect(northWest).toBe(0);
+  /* The sea off Greenland reads as cold as tropical cloud; against its own
+     latitude's clear sky it is clear. This is what veiled the far north. */
+  it('judges cloud against the clear sky of its own latitude', () => {
+    const ir = tileOf(() => 140);
+    const polar = new Float32Array(PADDED * PADDED).fill(130);
+    expect(px(renderClouds({ ir, clear: polar, vis: null, ...night }).rgba, 128, 128)[3]).toBe(0);
+    expect(px(renderClouds({ ir, clear: new Float32Array(PADDED * PADDED).fill(TROPICAL_CLEAR), vis: null, ...night }).rgba, 128, 128)[3]).toBeGreaterThan(40);
+  });
+
+  /* Past about 73° the satellites see the Arctic edge-on, and it came out as a flat white sheet. */
+  it('fades cloud out toward the edge of the satellites’ view', () => {
+    // Tile 4/1 at zoom 3 runs from about 79° down to 66.5° north.
+    const { rgba } = renderClouds({ ir: tileOf(() => 240), vis: null, z: 3, x: 4, y: 1, time: NOON });
+    expect(px(rgba, 128, 5)[3]).toBe(0);
+    expect(px(rgba, 128, 250)[3]).toBeGreaterThan(200);
   });
 
   /* The Sahara is as bright as cloud in visible light, but far too hot to be cloud. */
   it('leaves hot, bright desert clear by day', () => {
-    const out = renderClouds({ ir: tileOf(() => 30), vis: tileOf(() => 200), ...day });
-    expect(px(out, 128, 128)[3]).toBe(0);
+    const { rgba } = renderClouds({ ir: tileOf(() => 30), vis: tileOf(() => 200), ...day });
+    expect(px(rgba, 128, 128)[3]).toBe(0);
   });
 
   /* Low marine cloud is barely colder than the sea, so infrared misses it; daylight shows it. */
   it('shows low cloud that only visible light can see, but only by day', () => {
     const lowCloud = { ir: tileOf(() => 85), vis: tileOf(() => 190) };
-    expect(renderClouds({ ...lowCloud, ...day })[(128 * TILE + 128) * 4 + 3]).toBeGreaterThan(200);
-    expect(renderClouds({ ...lowCloud, vis: null, ...night })[(128 * TILE + 128) * 4 + 3]).toBe(0);
+    expect(px(renderClouds({ ...lowCloud, ...day }).rgba, 128, 128)[3]).toBeGreaterThan(200);
+    expect(px(renderClouds({ ...lowCloud, vis: null, ...night }).rgba, 128, 128)[3]).toBe(0);
   });
 });

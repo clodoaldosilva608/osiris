@@ -4,8 +4,8 @@ import { buildGeometry, closeRing, drawReducer, initialDrawState, measure, type 
 import { useEffect, useRef, useState, useCallback, memo } from 'react';
 import * as maplibregl from 'maplibre-gl';
 import { installTerrainTileProtocol } from '@/lib/terrain-tiles';
-import { CLOUDS_ATTRIBUTION, CLOUDS_LAYER, CLOUDS_MAX_ZOOM, CLOUDS_SOURCE, cloudsTileTemplate, frameTime } from '@/lib/live-clouds';
-import { installCloudsProtocol } from '@/lib/live-clouds-protocol';
+import { CLOUDS_ATTRIBUTION, CLOUDS_CREDIT, CLOUDS_LAYER, frameTime } from '@/lib/live-clouds';
+import { createCloudLayer } from '@/lib/live-clouds-layer';
 import { createSatelliteLayer, parseColor, SAT_MAX_ZOOM, type SatPoint } from '@/lib/satellite-layer';
 import { MAP_DEFAULTS, MAP_PALETTE_KEYS, readMapPalette, satColorFor, type MapPalette } from '@/lib/map-palette';
 import { STYLE_EVENT } from '@/lib/style-tokens';
@@ -194,6 +194,7 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
   const prevDrawnPolygonsRef = useRef<string[]>([]);
   const prevArcgisLayersRef = useRef<string[]>([]);
   const satLayerRef = useRef<ReturnType<typeof createSatelliteLayer> | null>(null);
+  const cloudLayerRef = useRef<ReturnType<typeof createCloudLayer> | null>(null);
   // pick() returns an index into the array last handed to setPoints, so the
   // matching catalogue rows are kept in the same order to resolve it.
   const satRowsRef = useRef<SatelliteRow[]>([]);
@@ -2653,44 +2654,36 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     }
   }, [mapReady, mapStyle]);
 
-  // Live Clouds — NOAA's satellite mosaic, drawn as lit cloud; see lib/live-clouds.
-  // Under the night shade and every marker. On the map they also sit under the
-  // place names, as on any weather map, so a storm never hides a city's name;
-  // on SAT they go above the imagery, which covers those names anyway. Nothing
-  // is fetched until the layer is first switched on.
+  // Live Clouds — NOAA's satellite mosaic, hung at cloud altitude over the
+  // ground; see lib/live-clouds-layer. Under the night shade and every marker.
+  // On the map they also sit under the place names, as on any weather map, so
+  // a storm never hides a city's name; on SAT they go above the imagery, which
+  // covers those names anyway. Nothing is fetched until the layer is first
+  // switched on, and switching it off frees what it held on the GPU.
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
     const map = mapRef.current;
     if (!activeLayers.live_clouds) {
-      if (map.getLayer(CLOUDS_LAYER)) map.setLayoutProperty(CLOUDS_LAYER, 'visibility', 'none');
+      if (map.getLayer(CLOUDS_LAYER)) map.removeLayer(CLOUDS_LAYER);
+      if (map.getLayer(CLOUDS_CREDIT)) map.removeLayer(CLOUDS_CREDIT);
+      cloudLayerRef.current = null;
       return;
     }
-    installCloudsProtocol(maplibregl.addProtocol);
-    let frame = frameTime();
-    const source = map.getSource(CLOUDS_SOURCE) as maplibregl.RasterTileSource | undefined;
-    if (!source) {
-      map.addSource(CLOUDS_SOURCE, {
-        type: 'raster', tiles: [cloudsTileTemplate(frame)], tileSize: 256,
-        maxzoom: CLOUDS_MAX_ZOOM, attribution: CLOUDS_ATTRIBUTION,
-      });
-    } else if (source.tiles[0] !== cloudsTileTemplate(frame)) {
-      source.setTiles([cloudsTileTemplate(frame)]); // it was off while a newer frame landed
+    if (!cloudLayerRef.current || !map.getLayer(CLOUDS_LAYER)) {
+      cloudLayerRef.current = createCloudLayer(CLOUDS_LAYER);
+      map.addLayer(cloudLayerRef.current, 'day-night-fill');
     }
-    if (!map.getLayer(CLOUDS_LAYER)) {
-      map.addLayer({ id: CLOUDS_LAYER, type: 'raster', source: CLOUDS_SOURCE, paint: { 'raster-opacity': 0.95, 'raster-fade-duration': 400 } }, 'day-night-fill');
-    } else {
-      map.setLayoutProperty(CLOUDS_LAYER, 'visibility', 'visible');
-    }
+    const clouds = cloudLayerRef.current;
+    clouds.setFrame(frameTime());
+    // MapLibre credits the sources its visible layers draw from. The clouds
+    // come from no source of its own, so an empty one carries NOAA's credit.
+    if (!map.getSource(CLOUDS_CREDIT)) map.addSource(CLOUDS_CREDIT, { type: 'geojson', data: EMPTY_FC, attribution: CLOUDS_ATTRIBUTION });
+    if (!map.getLayer(CLOUDS_CREDIT)) map.addLayer({ id: CLOUDS_CREDIT, type: 'circle', source: CLOUDS_CREDIT });
     const satellite = map.getLayer('satellite-layer') && map.getLayoutProperty('satellite-layer', 'visibility') !== 'none';
     const firstLabel = map.getStyle().layers.find(layer => layer.type === 'symbol')?.id;
     map.moveLayer(CLOUDS_LAYER, satellite || !firstLabel ? 'day-night-fill' : firstLabel);
     // A new frame lands every hour; move to it once it is up.
-    const refresh = setInterval(() => {
-      const next = frameTime();
-      if (next === frame) return;
-      frame = next;
-      (map.getSource(CLOUDS_SOURCE) as maplibregl.RasterTileSource | undefined)?.setTiles([cloudsTileTemplate(frame)]);
-    }, 5 * 60_000);
+    const refresh = setInterval(() => clouds.setFrame(frameTime()), 5 * 60_000);
     return () => clearInterval(refresh);
   }, [mapReady, activeLayers.live_clouds, mapStyle]);
 

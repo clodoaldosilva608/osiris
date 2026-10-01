@@ -9,12 +9,13 @@
  * texture and sunlit relief, but only on the day side.
  *
  * Everything here is pure: the worker (live-clouds.worker.ts) fetches and
- * decodes, and these functions turn grey satellite pixels into cloud.
+ * decodes, these functions turn grey satellite pixels into cloud, and the map
+ * layer (live-clouds-layer.ts) hangs that cloud at altitude over the ground.
  */
 
-export const CLOUDS_PROTOCOL = 'osiris-clouds';
-export const CLOUDS_SOURCE = 'live-clouds';
 export const CLOUDS_LAYER = 'live-clouds';
+/** An empty source whose only job is to put NOAA's credit on the map while the clouds are up. */
+export const CLOUDS_CREDIT = 'live-clouds-credit';
 export const CLOUDS_ATTRIBUTION = 'Clouds © NOAA/NESDIS GMGSI';
 /** The imagery is about 3 km a pixel, which zoom 6 already shows in full. */
 export const CLOUDS_MAX_ZOOM = 6;
@@ -68,18 +69,66 @@ export function frameTime(now: number = Date.now()): string {
   return t.toISOString().replace('.000Z', 'Z');
 }
 
-/** The source's tile URL. The frame time is in it, so a new frame means new tiles. */
-export function cloudsTileTemplate(time: string): string {
-  return `${CLOUDS_PROTOCOL}://{z}/{x}/{y}?time=${encodeURIComponent(time)}`;
+/** Whether a tile is one NOAA can be asked for: a real tile, at a zoom the imagery has, of an hourly frame. */
+export function isCloudTile({ z, x, y, time }: Tile): boolean {
+  return Number.isInteger(z) && Number.isInteger(x) && Number.isInteger(y)
+    && z >= 0 && z <= CLOUDS_MAX_ZOOM && x >= 0 && y >= 0 && x < 2 ** z && y < 2 ** z
+    && /^\d{4}-\d\d-\d\dT\d\d:00:00Z$/.test(time);
 }
 
-/** The z/x/y and frame of one of our tile URLs, or null for anything else. */
-export function parseCloudsUrl(url: string): Tile | null {
-  const match = /^osiris-clouds:\/\/(\d{1,2})\/(\d+)\/(\d+)\?time=(\d{4}-\d\d-\d\dT\d\d%3A00%3A00Z)$/.exec(url);
-  if (!match) return null;
-  const [z, x, y] = match.slice(1, 4).map(Number);
-  if (z > CLOUDS_MAX_ZOOM || x >= 2 ** z || y >= 2 ** z) return null;
-  return { z, x, y, time: decodeURIComponent(match[4]) };
+/* ── Hanging it in the sky ─────────────────────────────────────────────────── */
+
+/**
+ * Display altitude, in metres, for a cloud-top height from 0 (low cloud) to 1
+ * (the coldest storm tops), before `cloudLift` scales it for the zoom.
+ *
+ * The deck sits well clear of the ground so that a tilted view shows air under
+ * it: with its base near the surface it read as snow lying on hills. The
+ * towers above it keep to about real storm height; taller, a tower drawn on a
+ * mesh ten kilometres to the quad stood up as a sharp white sail. A display
+ * transform, like the satellites' altitudes, not a measurement.
+ */
+export const CLOUD_BASE_M = 9_000;
+export const CLOUD_RELIEF_M = 15_000;
+export function cloudAltitude(height: number): number {
+  return CLOUD_BASE_M + Math.min(1, Math.max(0, height)) * CLOUD_RELIEF_M;
+}
+
+/**
+ * How much the altitudes are stretched at a zoom. Seen from far out, a deck
+ * at true height is a film on the globe; it is lifted more the further out the
+ * view, up to 2.5 times, and drawn at its own height from zoom 6 in.
+ */
+export function cloudLift(zoom: number): number {
+  return Math.min(2.5, 2 ** (Math.max(0, 6 - zoom) * 0.45));
+}
+
+/**
+ * How solid the clouds are drawn at a zoom: whole from space, thinning as the
+ * view drops toward the ground under them, gone by street level. Zoomed into a
+ * town it is the town being looked at, not the weather kilometres above it,
+ * and a deck of cloud painted over it hid every place name and road.
+ */
+const FADE: readonly (readonly [number, number])[] = [[6, 1], [8.5, 0.4], [11, 0]];
+export function cloudOpacity(zoom: number): number {
+  if (zoom <= FADE[0][0]) return 1;
+  if (zoom >= FADE[FADE.length - 1][0]) return 0;
+  for (let n = 1; n < FADE.length; n++) {
+    const [z0, o0] = FADE[n - 1], [z1, o1] = FADE[n];
+    if (zoom <= z1) return o0 + ((o1 - o0) * (zoom - z0)) / (z1 - z0);
+  }
+  return 0;
+}
+
+/**
+ * How far south-east a cloud's shadow falls from the point under it, in its
+ * tile's own units (a tile is 1 across): a mid-height cloud's display altitude
+ * over the light's slope, against the tile's width on the ground there.
+ */
+export function shadowOffset(z: number, latRad: number, lift = 1): number {
+  const reach = (cloudAltitude(0.5) * lift) / Math.tan(LIGHT_ELEVATION);
+  const tileWidth = (2 * Math.PI * EARTH_RADIUS * Math.cos(latRad)) / 2 ** z;
+  return reach / tileWidth;
 }
 
 function getMap(band: Band, bbox: number[], width: number, height: number, time: string, format: string): string {
@@ -151,6 +200,103 @@ export function referenceHistogram(grey: Uint8Array, rect: { x0: number; x1: num
     }
   }
   return hist;
+}
+
+/* ── Clear sky ─────────────────────────────────────────────────────────────
+   Clear ground reads colder toward the poles — about 62 in the tropics, 110
+   at 60°, 130 at 70°, measured on the reference — and cloud is whatever is
+   colder than that. It differs by region too: a Siberian night is colder than
+   the sea at the same latitude, and toward the edge of their view the
+   satellites see whole sectors as falsely cold. So each frame the world
+   reference is cut into cells, a band of latitude by a sector of longitude,
+   and each gives up a low percentile: the grey only a tenth of it is warmer
+   than, which is ground showing between the clouds. Every tile reads the same
+   grid, interpolated smoothly, so it cannot open a seam between two of them. */
+
+/** Rows of the reference per latitude band. */
+const BAND_ROWS = 24;
+/** Columns of the reference per longitude sector: 22.5°. */
+const SECTOR_COLS = 128;
+/** The share of a cell taken to be clear ground. */
+const CLEAR_PERCENTILE = 0.1;
+/**
+ * How far a cell's clear sky may stray from its latitude's: enough for a cold
+ * night inland or a hot desert, not so far that a cell under one great storm
+ * counts the storm as clear sky.
+ */
+const SECTOR_SPREAD = 30;
+
+export interface ClearSky { bands: number; sectors: number; level: Float32Array }
+
+/** The grey that a tenth of the counted pixels sit at or below, or NaN for too few. */
+function percentile(hist: Uint32Array, n: number): number {
+  if (n < MIN_SAMPLES) return NaN;
+  let below = 0;
+  for (let v = 0; v < 256; v++) { below += hist[v]; if (below >= n * CLEAR_PERCENTILE) return v; }
+  return 255;
+}
+
+/** The frame's clear-sky grid, from its infrared reference. */
+export function clearSky(grey: Uint8Array): ClearSky {
+  const bands = Math.ceil(REF_HEIGHT / BAND_ROWS), sectors = REF_WIDTH / SECTOR_COLS;
+  const band = new Float32Array(bands), level = new Float32Array(bands * sectors);
+  const all = new Uint32Array(256), cell = new Uint32Array(256 * sectors), counts = new Uint32Array(sectors);
+  for (let b = 0; b < bands; b++) {
+    all.fill(0); cell.fill(0); counts.fill(0);
+    let n = 0;
+    for (let j = b * BAND_ROWS; j < Math.min(REF_HEIGHT, (b + 1) * BAND_ROWS); j++) {
+      for (let i = 0; i < REF_WIDTH; i += 2) {
+        const v = grey[j * REF_WIDTH + i];
+        if (v <= 3) continue; // outside the satellites' view
+        const sector = (i / SECTOR_COLS) | 0;
+        all[v]++; n++;
+        cell[sector * 256 + v]++; counts[sector]++;
+      }
+    }
+    band[b] = percentile(all, n);
+    for (let c = 0; c < sectors; c++) level[b * sectors + c] = percentile(cell.subarray(c * 256, c * 256 + 256), counts[c]);
+  }
+  // Bands outside the satellites' view borrow the nearest one that has data.
+  for (let b = 0; b < bands; b++) {
+    for (let d = 1; d < bands && Number.isNaN(band[b]); d++) {
+      const near = [band[b - d], band[b + d]].find(v => v !== undefined && !Number.isNaN(v));
+      if (near !== undefined) band[b] = near;
+    }
+    if (Number.isNaN(band[b])) band[b] = TROPICAL_CLEAR;
+  }
+  for (let b = 0; b < bands; b++) {
+    for (let c = 0; c < sectors; c++) {
+      const k = b * sectors + c;
+      level[k] = Number.isNaN(level[k]) ? band[b] : Math.min(band[b] + SECTOR_SPREAD, Math.max(band[b] - SECTOR_SPREAD, level[k]));
+    }
+  }
+  return { bands, sectors, level };
+}
+
+/** Clear-sky grey at a point of the reference, in its pixels: bilinear between cell centres, wrapping in longitude. */
+export function clearSkyAt({ bands, sectors, level }: ClearSky, rx: number, ry: number): number {
+  const t = Math.min(bands - 1, Math.max(0, ry / BAND_ROWS - 0.5));
+  const b0 = Math.floor(t), b1 = Math.min(bands - 1, b0 + 1), fb = t - b0;
+  const u = rx / SECTOR_COLS - 0.5, c = Math.floor(u), fc = u - c;
+  const c0 = ((c % sectors) + sectors) % sectors, c1 = (c0 + 1) % sectors;
+  const north = level[b0 * sectors + c0] * (1 - fc) + level[b0 * sectors + c1] * fc;
+  const south = level[b1 * sectors + c0] * (1 - fc) + level[b1 * sectors + c1] * fc;
+  return north * (1 - fb) + south * fb;
+}
+
+/** Clear-sky grey for every pixel of a padded tile. */
+export function tileClearSky(z: number, x: number, y: number, sky: ClearSky): Float32Array {
+  const size = (2 * HALF) / 2 ** z;
+  const out = new Float32Array(PADDED * PADDED);
+  for (let j = 0; j < PADDED; j++) {
+    const my = HALF - y * size - ((j - PAD + 0.5) * size) / TILE;
+    const ry = ((REF_HALF_HEIGHT - my) / (2 * REF_HALF_HEIGHT)) * REF_HEIGHT;
+    for (let i = 0; i < PADDED; i++) {
+      const mx = -HALF + x * size + ((i - PAD + 0.5) * size) / TILE;
+      out[j * PADDED + i] = clearSkyAt(sky, ((mx + HALF) / (2 * HALF)) * REF_WIDTH, ry);
+    }
+  }
+  return out;
 }
 
 /** Fewer samples than this and a histogram says little; the tile is drawn as served. */
@@ -236,9 +382,18 @@ export function tileDaylight(z: number, x: number, y: number, time: number): num
 
 /* ── Drawing the cloud ────────────────────────────────────────────────────── */
 
-/** Infrared grey, on the reference's scale, where cloud starts and where it is solid. */
-const IR_CLEAR = 105;
-const IR_SOLID = 200;
+/**
+ * Where cloud starts and where it is solid, as coldness above the clear-sky
+ * grey for that latitude: 0 at clear ground, 1 at the coldest grey there is.
+ * In the tropics, where clear sky reads about 62, these land on 105 and 200.
+ */
+const COLD_CLEAR = 0.22;
+const COLD_SOLID = 0.71;
+/** Clear-sky infrared grey in the tropics, used when no reference was to hand. */
+export const TROPICAL_CLEAR = 62;
+/** Latitudes, in radians, over which cloud fades out toward the edge of the satellites' view. */
+const RIM_START = (66 * Math.PI) / 180;
+const RIM_END = (74 * Math.PI) / 180;
 /**
  * Height keeps rising past solid, up to here. Opacity tops out well below the
  * coldest storm tops, and a height that topped out with it left every storm a
@@ -278,17 +433,16 @@ const RELIEF_PER_ZOOM = 1.5;
 const CAVITY = 1.6;
 /** Radius, in pixels, of the neighbourhood those gaps are measured against. */
 const CAVITY_RADIUS = 6;
+/** Radius, in pixels, the lift is smoothed over: the layer's mesh has a vertex every four. */
+const LIFT_RADIUS = 4;
 /** Toward the light: from the north-west and 40° up, with y pointing south as image rows do. */
 const LIGHT = (() => { const v = [-1, -1, 1.2], n = Math.hypot(...v); return v.map(c => c / n); })();
+const LIGHT_ELEVATION = Math.asin(LIGHT[2]);
 /** Brightness of flat cloud, and how far slopes swing it either way. */
 const FLAT = 0.84;
 const SWING = 1.6;
-/** Ground shadow: how dark, and how far south-east of its cloud, in pixels. */
-const SHADOW = 0.42;
-const SHADOW_OFFSET = 4;
 /** Shaded cloud is a cool grey, lit cloud white. */
 const SHADE_RGB = [112, 126, 148];
-const SHADOW_RGB = [2, 5, 14];
 
 const smooth = (edge0: number, edge1: number, v: number) => {
   const t = Math.min(1, Math.max(0, (v - edge0) / (edge1 - edge0)));
@@ -321,10 +475,13 @@ function boxBlur(src: Float32Array, out: Float32Array, tmp: Float32Array, w: num
 const N = PADDED * PADDED;
 const alpha = new Float32Array(N), height = new Float32Array(N), seen = new Float32Array(N), daylight = new Float32Array(N);
 const alphaSoft = new Float32Array(N), heightSoft = new Float32Array(N), heightWide = new Float32Array(N), seenWide = new Float32Array(N), scratch = new Float32Array(N);
+const mass = new Float32Array(N), massSoft = new Float32Array(N);
 
 export interface CloudTile {
   /** Infrared, RGBA, PADDED × PADDED, greys already on the reference's scale. */
   ir: Uint8ClampedArray;
+  /** Clear-sky infrared grey for each pixel, PADDED × PADDED — see tileClearSky. Tropical throughout when absent. */
+  clear?: Float32Array;
   /** Visible, the same, or null when the tile is all night. */
   vis: Uint8ClampedArray | null;
   z: number; x: number; y: number;
@@ -332,18 +489,25 @@ export interface CloudTile {
   time: number;
 }
 
+export interface CloudImage {
+  /** The cloud, RGBA, PADDED × PADDED with its margin: lit colour, and opacity in alpha. */
+  rgba: Uint8ClampedArray<ArrayBuffer>;
+  /** Cloud-top height, PADDED × PADDED, 0 for the lowest cloud to 255 for the highest — what the layer lifts each point by. */
+  height: Uint8Array<ArrayBuffer>;
+}
+
 /**
- * The finished tile, RGBA, TILE × TILE.
+ * The finished tile.
  *
  * Opacity comes from infrared — the colder, the thicker — and by day from
  * visible light too, which also catches low cloud infrared can't tell from the
  * sea. Brightness comes from relief: cloud-top height, read off infrared, lit
- * from the north-west, so towering storms stand up off the map, with lower
- * cloud in the gaps between them falling into shade. By day the fine detail of
- * the visible band — real sunlit texture — is laid over that. Each cloud then casts a soft
- * shadow south-east onto whatever is beneath it.
+ * from the north-west, so towering storms stand up, with lower cloud in the
+ * gaps between them falling into shade. By day the fine detail of the visible
+ * band — real sunlit texture — is laid over that. The height goes out too, so
+ * the layer can lift each cloud to its own altitude and cast its shadow.
  */
-export function renderClouds({ ir, vis, z, x, y, time }: CloudTile): Uint8ClampedArray<ArrayBuffer> {
+export function renderClouds({ ir, clear, vis, z, x, y, time }: CloudTile): CloudImage {
   // Sun elevation is separable: a term per row plus a term per row times one per column.
   const { lat, lng } = tileGrid(z, x, y);
   const { sinDec, cosDec, subsolar } = sunTerms(time);
@@ -352,10 +516,22 @@ export function renderClouds({ ir, vis, z, x, y, time }: CloudTile): Uint8Clampe
   const colCos = lng.map(l => Math.cos(l - subsolar));
 
   for (let j = 0; j < PADDED; j++) {
+    // Cloud is measured against how cold clear ground is here, not one grey
+    // for the world: the sea off Greenland is as cold as cloud over the
+    // tropics, and a single threshold veiled the whole far north.
+    // Toward 73°, the edge of what the satellites see, they see it at a
+    // grazing angle: the infrared reads falsely cold and smeared, and came out
+    // as a flat white sheet over the Arctic. Faded out, which also softens the
+    // hard rim the coverage left on the globe.
+    const rim = 1 - smooth(RIM_START, RIM_END, Math.abs(lat[j]));
     for (let i = 0; i < PADDED; i++) {
       const k = j * PADDED + i, p = k * 4;
+      const ground = clear ? clear[k] : TROPICAL_CLEAR;
+      const span = 255 - ground;
+      const cloudFrom = ground + COLD_CLEAR * span;
       const covered = ir[p + 3] / 255;
-      const cold = smooth(IR_CLEAR, IR_SOLID, ir[p]);
+      const cold = smooth(COLD_CLEAR, COLD_SOLID, (ir[p] - ground) / span);
+      const rise = Math.min(1, Math.max(0, (ir[p] - cloudFrom) / (IR_TOP - cloudFrom)));
       let a = cold;
       if (vis && vis[p + 3] > 0) {
         const elevation = rowSin[j] + rowCos[j] * colCos[i];
@@ -363,8 +539,10 @@ export function renderClouds({ ir, vis, z, x, y, time }: CloudTile): Uint8Clampe
         if (day > 0) {
           // A low sun lights cloud dimly; divide that out, as satellite
           // imagery is corrected for sun angle, or evening cloud goes grey.
+          // Only for its texture: brightened, low-sun sea glare passed for
+          // cloud and hazed the whole evening side, so opacity reads it raw.
           const v = Math.min(255, vis[p] / (LOW_SUN + (1 - LOW_SUN) * smooth(0, HIGH_SUN, elevation)));
-          a = Math.max(a, day * smooth(VIS_CLEAR, VIS_SOLID, v) * smooth(IR_HOT, IR_HOT + 20, ir[p]));
+          a = Math.max(a, day * smooth(VIS_CLEAR, VIS_SOLID, vis[p]) * smooth(IR_HOT, IR_HOT + 20, ir[p]));
           seen[k] = v / 255;
         } else {
           seen[k] = 0;
@@ -373,8 +551,9 @@ export function renderClouds({ ir, vis, z, x, y, time }: CloudTile): Uint8Clampe
       } else {
         seen[k] = daylight[k] = 0;
       }
-      alpha[k] = a * covered;
-      height[k] = Math.min(1, Math.max(0, (ir[p] - IR_CLEAR) / (IR_TOP - IR_CLEAR)));
+      alpha[k] = a * covered * rim;
+      mass[k] = alpha[k] * rise;
+      height[k] = rise;
     }
   }
 
@@ -383,26 +562,33 @@ export function renderClouds({ ir, vis, z, x, y, time }: CloudTile): Uint8Clampe
   // Radius 2: the infrared comes in whole grey steps, and relief would light each step as a ridge.
   boxBlur(height, heightSoft, scratch, PADDED, 2);
   boxBlur(height, heightWide, scratch, PADDED, CAVITY_RADIUS);
+  // What the layer lifts the mesh by: height where there is cloud to carry it,
+  // so thin cloud stays on the deck, smoothed to about the mesh's own spacing
+  // so a tower rises as a dome rather than one vertex spiking.
+  boxBlur(mass, massSoft, scratch, PADDED, LIFT_RADIUS);
   const relief = RELIEF * RELIEF_PER_ZOOM ** (z - 4);
 
-  const out = new Uint8ClampedArray(TILE * TILE * 4);
+  // The margin goes out with the tile: the layer reads across it for shadows
+  // and relief, so they carry over tile edges instead of stopping at them.
+  const out = new Uint8ClampedArray(N * 4);
+  const lift = new Uint8Array(N);
   const [lx, ly, lz] = LIGHT;
-  const back = SHADOW_OFFSET * PADDED + SHADOW_OFFSET; // index step to the cloud that shades a pixel
-  for (let j = 0; j < TILE; j++) {
-    for (let i = 0; i < TILE; i++) {
-      const k = (j + PAD) * PADDED + i + PAD;
-      const o = (j * TILE + i) * 4;
+  for (let j = 0; j < PADDED; j++) {
+    for (let i = 0; i < PADDED; i++) {
+      const k = j * PADDED + i;
+      const o = k * 4;
+      lift[k] = Math.round(massSoft[k] * 255);
       const a = alphaSoft[k];
-      const s = alphaSoft[k - back] * SHADOW * (1 - a);
-      const total = a + s;
-      if (total < 0.004) continue; // already transparent
+      if (a < 0.004) continue; // already transparent
+      const west = i > 0 ? k - 1 : k, east = i < PADDED - 1 ? k + 1 : k;
+      const north = j > 0 ? k - PADDED : k, south = j < PADDED - 1 ? k + PADDED : k;
 
       // Surface normal of the cloud tops, from the height field's slope. Thin
       // cloud — cirrus, veils — is lit nearly flat: it has no tops to catch the
       // light, and relief made a cirrus plume read as a field of cumulus.
       const bumps = relief * a * a;
-      const dx = (heightSoft[k + 1] - heightSoft[k - 1]) * 0.5 * bumps;
-      const dy = (heightSoft[k + PADDED] - heightSoft[k - PADDED]) * 0.5 * bumps;
+      const dx = (heightSoft[east] - heightSoft[west]) * 0.5 * bumps;
+      const dy = (heightSoft[south] - heightSoft[north]) * 0.5 * bumps;
       const facing = (-dx * lx - dy * ly + lz) / Math.sqrt(dx * dx + dy * dy + 1);
       const occlusion = 1 - Math.min(0.6, CAVITY * Math.max(0, heightWide[k] - heightSoft[k]));
       // By day, the visible band's own detail: how much brighter or darker each
@@ -414,11 +600,11 @@ export function renderClouds({ ir, vis, z, x, y, time }: CloudTile): Uint8Clampe
       const r = SHADE_RGB[0] + (255 - SHADE_RGB[0]) * lum;
       const g = SHADE_RGB[1] + (255 - SHADE_RGB[1]) * lum;
       const b = SHADE_RGB[2] + (255 - SHADE_RGB[2]) * lum;
-      out[o] = (r * a + SHADOW_RGB[0] * s) / total;
-      out[o + 1] = (g * a + SHADOW_RGB[1] * s) / total;
-      out[o + 2] = (b * a + SHADOW_RGB[2] * s) / total;
-      out[o + 3] = Math.min(1, total) * 255;
+      out[o] = r;
+      out[o + 1] = g;
+      out[o + 2] = b;
+      out[o + 3] = a * 255;
     }
   }
-  return out;
+  return { rgba: out, height: lift };
 }
