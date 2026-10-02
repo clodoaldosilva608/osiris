@@ -31,6 +31,8 @@ import type { ContextItem, Depth, Frame, Link, Post, RoundStat } from '@/lib/oai
 /* ───────────────────────────── Tokens ───────────────────────────── */
 
 const ACCENT = 'var(--gold-primary)';
+/** The theatre's surfaces: solid enough that the app's own HUD never shows through. */
+const SOLID = { background: 'color-mix(in srgb, var(--bg-primary) 94%, transparent)', backdropFilter: 'blur(18px)', WebkitBackdropFilter: 'blur(18px)' };
 const tint = (color: string, pct: number) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
 const pct = (p: number | null | undefined) => (p === null || p === undefined || !Number.isFinite(p) ? '—' : `${Math.round(p * 100)}%`);
 const initials = (name: string) => name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
@@ -147,8 +149,10 @@ export default function OaiPanel(props: OaiPanelProps) {
   if (theater && s && !embedded) {
     const node = (
       <div className="fixed inset-0 z-[900] pointer-events-none">
+        <div className="absolute inset-x-0 top-0 h-[84px]" style={{ background: 'linear-gradient(to bottom, color-mix(in srgb, var(--bg-primary) 85%, transparent) 55%, transparent)' }} />
+        <div className="absolute inset-x-0 bottom-0 h-[44px]" style={{ background: 'linear-gradient(to top, var(--bg-primary) 55%, transparent)' }} />
         <TheaterTopBar s={s} {...props} />
-        <aside className="absolute left-3 top-[68px] bottom-3 w-[360px] pointer-events-auto glass-panel rounded-xl flex flex-col overflow-hidden">
+        <aside className="absolute left-3 top-[76px] bottom-3 w-[360px] pointer-events-auto rounded-xl border border-[var(--border-primary)] flex flex-col overflow-hidden shadow-2xl" style={SOLID}>
           <div className="flex-1 min-h-0 overflow-y-auto styled-scrollbar p-4 flex flex-col gap-4">
             {errorBox}
             <Verdict s={s} />
@@ -158,7 +162,7 @@ export default function OaiPanel(props: OaiPanelProps) {
           </div>
           <UsageLine s={s} />
         </aside>
-        <aside className="absolute right-3 top-[68px] bottom-3 w-[400px] pointer-events-auto glass-panel rounded-xl flex flex-col overflow-hidden">
+        <aside className="absolute right-3 top-[76px] bottom-3 w-[400px] pointer-events-auto rounded-xl border border-[var(--border-primary)] flex flex-col overflow-hidden shadow-2xl" style={SOLID}>
           {tabs}
         </aside>
         {selection && (
@@ -180,10 +184,17 @@ export default function OaiPanel(props: OaiPanelProps) {
 
   /* ── Docked, or in the phone drawer ── */
   const header = (
-    <div className={`flex items-center gap-2 px-3 ${embedded ? 'pb-2' : 'py-2.5'} border-b border-[var(--border-secondary)]`}>
-      <Orbit className="w-4 h-4 flex-shrink-0" style={{ color: ACCENT }} />
-      <span className="hud-text text-[12px] tracking-[0.24em] text-[var(--text-primary)]">OAI</span>
-      <span className="text-[9px] font-mono tracking-[0.16em] text-[var(--text-muted)] truncate">SWARM FORECASTING</span>
+    <div className={`flex items-center gap-2 ${embedded ? 'pb-2' : 'px-3 py-2.5 border-b border-[var(--border-secondary)]'}`}>
+      {embedded ? (
+        // The phone drawer already names OAI: keep only what this panel adds.
+        <span className="text-[9px] font-mono tracking-[0.16em] text-[var(--text-muted)] truncate">SWARM FORECASTING · YOUR OWN KEY</span>
+      ) : (
+        <>
+          <Orbit className="w-4 h-4 flex-shrink-0" style={{ color: ACCENT }} />
+          <span className="hud-text text-[12px] tracking-[0.24em] text-[var(--text-primary)]">OAI</span>
+          <span className="text-[9px] font-mono tracking-[0.16em] text-[var(--text-muted)] truncate">SWARM FORECASTING</span>
+        </>
+      )}
       <div className="ml-auto flex items-center gap-0.5">
         <IconButton title={showHistory ? 'Back' : 'Your forecasts'} onClick={() => setShowHistory(v => !v)} active={showHistory}><History className="w-3.5 h-3.5" /></IconButton>
         {s && <IconButton title="New forecast" onClick={() => { oai.clear(); onSelect(null); setShowHistory(false); setTab(null); }}><Plus className="w-3.5 h-3.5" /></IconButton>}
@@ -516,8 +527,8 @@ function StatusLine({ s }: { s: RunState }) {
     return (
       <p className="text-[10px] text-[var(--text-secondary)] flex items-center gap-1.5">
         <Loader2 className="w-3 h-3 animate-spin flex-shrink-0" style={{ color: ACCENT }} />
-        <span className="truncate">{s.phaseLabel || 'Starting'}</span>
-        {thinking > 0 && <span className="text-[var(--text-muted)]">· {thinking} thinking</span>}
+        <span className="truncate min-w-0">{s.phaseLabel || 'Starting'}</span>
+        {thinking > 0 && <span className="text-[var(--text-muted)] whitespace-nowrap">· {thinking} thinking</span>}
       </p>
     );
   }
@@ -551,8 +562,8 @@ function RunSummary({ s, oai, focus, onFocus, following, onFollow }: { s: RunSta
         </p>
       )}
       <Stepper s={s} />
-      <div className="flex items-center gap-3">
-        <div className="flex-1 min-w-0"><StatusLine s={s} /></div>
+      <StatusLine s={s} />
+      <div className="flex items-center justify-end gap-3">
         <CameraChip following={following} onFollow={onFollow} />
         {onFocus && (
           <TextButton onClick={onFocus} title={focus ? 'Bring the other map layers back' : 'Hide the other map layers so the analysis stands out'}>
@@ -575,7 +586,7 @@ function TheaterTopBar({ s, oai, onTheater, focus, onFocus, following, onFollow 
     } catch { /* clipboard blocked */ }
   };
   return (
-    <header className="absolute left-3 right-3 top-3 h-[52px] pointer-events-auto glass-panel rounded-xl flex items-center gap-4 px-4">
+    <header className="absolute left-3 right-3 top-3 h-[56px] pointer-events-auto rounded-xl border border-[var(--border-primary)] flex items-center gap-4 px-4 shadow-2xl" style={SOLID}>
       <div className="flex items-center gap-2 flex-shrink-0">
         <Orbit className="w-4 h-4" style={{ color: ACCENT }} />
         <span className="hud-text text-[13px] tracking-[0.26em] text-[var(--text-primary)]">OAI</span>
@@ -1035,7 +1046,7 @@ function Legend({ inline = false }: { inline?: boolean }) {
     { label: 'weighing an actor', dash: '4 3', opacity: 0.8 },
   ];
   return (
-    <div className={`${inline ? '' : 'glass-panel rounded-lg px-3 py-2'} flex ${inline ? 'flex-wrap gap-x-4 gap-y-1' : 'flex-col gap-1'}`}>
+    <div className={`${inline ? '' : 'rounded-lg border border-[var(--border-primary)] px-3 py-2'} flex ${inline ? 'flex-wrap gap-x-4 gap-y-1' : 'flex-col gap-1'}`} style={inline ? undefined : SOLID}>
       {rows.map(r => (
         <span key={r.label} className="inline-flex items-center gap-2 text-[9px] text-[var(--text-muted)]">
           <svg width="26" height="6" aria-hidden><line x1="1" x2="25" y1="3" y2="3" stroke="var(--map-oai, #fff)" strokeWidth="1.6" strokeDasharray={r.dash} opacity={r.opacity ?? 1} strokeLinecap="round" /></svg>
@@ -1378,9 +1389,15 @@ function Inspector({ s, sel, onSelect, onLocate, onAsk, floating = false }: {
   }
 
   const lit = relatedLinks(s, sel.key).size;
+  // A new selection comes into view: in a column or the phone drawer it can sit below the fold.
+  const bringIntoView = (el: HTMLElement | null) => {
+    if (!el || floating || el.dataset.key === sel.key) return;
+    el.dataset.key = sel.key;
+    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  };
   return (
-    <section className={`rounded-lg border p-3 flex flex-col gap-2 ${floating ? 'glass-panel shadow-2xl max-h-[42vh] overflow-y-auto styled-scrollbar' : 'bg-black/30'}`}
-      style={{ borderColor: tint(ACCENT, 40) }}>
+    <section ref={bringIntoView} className={`rounded-lg border p-3 flex flex-col gap-2 ${floating ? 'shadow-2xl max-h-[42vh] overflow-y-auto styled-scrollbar' : 'bg-black/30'}`}
+      style={{ borderColor: tint(ACCENT, 40), ...(floating ? SOLID : {}) }}>
       <div className="flex items-center gap-2">
         <span className="text-[9px] font-mono tracking-[0.18em] uppercase" style={{ color: ACCENT }}>{kicker}</span>
         {lit > 1 && <span className="text-[9px] text-[var(--text-muted)]">{lit} arcs lit</span>}

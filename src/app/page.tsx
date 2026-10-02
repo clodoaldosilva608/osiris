@@ -182,82 +182,6 @@ export default function Dashboard() {
   const [splashStage, setSplashStage] = useState(0);
   const [mapReady, setMapReady] = useState(false);
 
-  // ── OSIRIS OAI ── the run lives here, not in the panel, so the globe keeps
-  // drawing it while the panel is closed. State goes to the map's OAI layer
-  // directly rather than through a prop, so the map does not re-render per event.
-  const oai = useOai();
-  const [showOai, setShowOai] = useState(false);
-  const oaiAnchor = useRef<HTMLDivElement>(null);
-  const [oaiTop, setOaiTop] = useState(0);
-  useLayoutEffect(() => {
-    if (!showOai) return;
-    const place = () => {
-      const anchor = oaiAnchor.current?.getBoundingClientRect();
-      if (anchor) setOaiTop(Math.round(64 - anchor.top));
-    };
-    place();
-    window.addEventListener('resize', place);
-    return () => window.removeEventListener('resize', place);
-  }, [showOai]);
-  /** What is selected on the globe or in the panel: a point's key, or "link:<id>" for an arc. */
-  const [oaiSelected, setOaiSelected] = useState<string | null>(null);
-  const [oaiHover, setOaiHover] = useState<OaiHover | null>(null);
-  const [oaiFollowing, setOaiFollowing] = useState(true);
-  const [oaiTheater, setOaiTheater] = useState(false);
-  // A different run (or none) starts with nothing selected.
-  const [oaiSelectionRun, setOaiSelectionRun] = useState(oai.runId);
-  if (oaiSelectionRun !== oai.runId) {
-    setOaiSelectionRun(oai.runId);
-    setOaiSelected(null);
-  }
-  const oaiGlobe = useRef<OaiGlobe | null>(null);
-  const oaiState = useRef(oai.state);
-  const oaiSelectedRef = useRef(oaiSelected);
-  useEffect(() => {
-    oaiState.current = oai.state;
-    oaiGlobe.current?.update(oai.state);
-  }, [oai.state]);
-  useEffect(() => {
-    oaiSelectedRef.current = oaiSelected;
-    oaiGlobe.current?.select(oaiSelected);
-  }, [oaiSelected]);
-  const handleOaiGlobe = useCallback((globe: OaiGlobe | null) => {
-    oaiGlobe.current = globe;
-    globe?.update(oaiState.current);
-    globe?.select(oaiSelectedRef.current);
-  }, []);
-  // A click on the globe selects, and opens the panel to show what was clicked; empty map clears.
-  const handleOaiSelect = useCallback((key: string | null) => {
-    setOaiSelected(key);
-    if (!key) return;
-    if (window.matchMedia('(max-width: 767px)').matches) setMobilePanel('oai');
-    else setShowOai(true);
-  }, []);
-  // Going somewhere on purpose takes the camera off the director.
-  const handleOaiLocate = useCallback((lat: number, lng: number, zoom?: number) => {
-    oaiGlobe.current?.follow(false);
-    setFlyToLocation({ lat, lng, zoom, ts: Date.now() });
-  }, []);
-  const followOai = useCallback(() => oaiGlobe.current?.follow(true), []);
-  // Full screen: the theatre's panels sit either side, and the globe stays centred in the space between.
-  const oaiTheaterOn = oaiTheater && Boolean(oai.state);
-  useEffect(() => {
-    oaiGlobe.current?.setInsets(oaiTheaterOn ? { top: 76, bottom: 24, left: 384, right: 424 } : null);
-  }, [oaiTheaterOn]);
-  // A shared link (?oai=<run>) opens the panel on that run, and the camera
-  // goes to the run rather than to the visitor's city.
-  useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get('oai');
-    if (!id) return;
-    autoLocateCancelled.current = true;
-    if (window.matchMedia('(max-width: 767px)').matches) setMobilePanel('oai');
-    else setShowOai(true);
-    void oai.watch(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  // Once a run is under way the camera is the director's (lib/oai/camera): a late answer about the
-  // visitor's city must not fly it away.
-  useEffect(() => { if (oai.runId) autoLocateCancelled.current = true; }, [oai.runId]);
   const revealed = !showSplash;
   /* True once the splash has finished fading out, not merely started to. */
   const [splashGone, setSplashGone] = useState(false);
@@ -391,6 +315,94 @@ export default function Dashboard() {
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number; bounds?: { west: number; south: number; east: number; north: number } } | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<'layers'|'markets'|'intel'|'search'|'recon'|'remote'|'oai'|null>(null);
+
+  // ── OSIRIS OAI ── the run lives here, not in the panel, so the globe keeps
+  // drawing it while the panel is closed. State goes to the map's OAI layer
+  // directly rather than through a prop, so the map does not re-render per event.
+  const oai = useOai();
+  const [showOai, setShowOai] = useState(false);
+  const oaiAnchor = useRef<HTMLDivElement>(null);
+  const [oaiTop, setOaiTop] = useState(0);
+  useLayoutEffect(() => {
+    if (!showOai) return;
+    const place = () => {
+      const anchor = oaiAnchor.current?.getBoundingClientRect();
+      if (anchor) setOaiTop(Math.round(64 - anchor.top));
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [showOai]);
+  /** What is selected on the globe or in the panel: a point's key, or "link:<id>" for an arc. */
+  const [oaiSelected, setOaiSelected] = useState<string | null>(null);
+  const [oaiHover, setOaiHover] = useState<OaiHover | null>(null);
+  const [oaiFollowing, setOaiFollowing] = useState(true);
+  const [oaiTheater, setOaiTheater] = useState(false);
+  // A different run (or none) starts with nothing selected.
+  const [oaiSelectionRun, setOaiSelectionRun] = useState(oai.runId);
+  if (oaiSelectionRun !== oai.runId) {
+    setOaiSelectionRun(oai.runId);
+    setOaiSelected(null);
+  }
+  const oaiGlobe = useRef<OaiGlobe | null>(null);
+  const oaiState = useRef(oai.state);
+  const oaiSelectedRef = useRef(oaiSelected);
+  useEffect(() => {
+    oaiState.current = oai.state;
+    oaiGlobe.current?.update(oai.state);
+  }, [oai.state]);
+  useEffect(() => {
+    oaiSelectedRef.current = oaiSelected;
+    oaiGlobe.current?.select(oaiSelected);
+  }, [oaiSelected]);
+  const handleOaiGlobe = useCallback((globe: OaiGlobe | null) => {
+    oaiGlobe.current = globe;
+    globe?.update(oaiState.current);
+    globe?.select(oaiSelectedRef.current);
+  }, []);
+  // A click on the globe selects, and opens the panel to show what was clicked; empty map clears.
+  const handleOaiSelect = useCallback((key: string | null) => {
+    setOaiSelected(key);
+    if (!key) return;
+    if (window.matchMedia('(max-width: 767px)').matches) setMobilePanel('oai');
+    else setShowOai(true);
+  }, []);
+  // Going somewhere on purpose takes the camera off the director.
+  const handleOaiLocate = useCallback((lat: number, lng: number, zoom?: number) => {
+    oaiGlobe.current?.follow(false);
+    setFlyToLocation({ lat, lng, zoom, ts: Date.now() });
+  }, []);
+  const followOai = useCallback(() => oaiGlobe.current?.follow(true), []);
+  // Full screen: the theatre's panels sit either side, and the globe stays centred in the space between.
+  const oaiTheaterOn = oaiTheater && Boolean(oai.state);
+  // On a phone the drawer covers the lower half: the globe centres in the space above it.
+  const oaiDrawerOpen = mobilePanel === 'oai' && Boolean(oai.state);
+  useEffect(() => {
+    if (!oaiDrawerOpen) return;
+    const drawer = Math.round(Math.min(window.innerHeight * 0.55, window.innerHeight - 100)) + 52;
+    oaiGlobe.current?.setInsets({ top: 70, bottom: drawer, left: 0, right: 0 });
+    return () => oaiGlobe.current?.setInsets(null);
+  }, [oaiDrawerOpen]);
+  useEffect(() => {
+    oaiGlobe.current?.setInsets(oaiTheaterOn ? { top: 76, bottom: 24, left: 384, right: 424 } : null);
+    // The app's own HUD (everything marked data-hud) steps back while the theatre has the screen.
+    document.documentElement.toggleAttribute('data-oai-theater', oaiTheaterOn);
+    return () => document.documentElement.removeAttribute('data-oai-theater');
+  }, [oaiTheaterOn]);
+  // A shared link (?oai=<run>) opens the panel on that run, and the camera
+  // goes to the run rather than to the visitor's city.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('oai');
+    if (!id) return;
+    autoLocateCancelled.current = true;
+    if (window.matchMedia('(max-width: 767px)').matches) setMobilePanel('oai');
+    else setShowOai(true);
+    void oai.watch(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Once a run is under way the camera is the director's (lib/oai/camera): a late answer about the
+  // visitor's city must not fly it away.
+  useEffect(() => { if (oai.runId) autoLocateCancelled.current = true; }, [oai.runId]);
   const [mapProjection, setMapProjection] = useState<'globe'|'mercator'>('globe');
   const [terrainFocus, setTerrainFocus] = useState(0);
   const [terrainStatus, setTerrainStatus] = useState<TerrainStatus>('idle');
@@ -596,10 +608,13 @@ export default function Dashboard() {
   // and put back exactly what was on when focus ends.
   const [oaiFocus, setOaiFocus] = useState(false);
   const focusSaved = useRef<typeof activeLayers | null>(null);
+  /** Whether focus is on, readable at once (the state lags a render behind). */
+  const focusOn = useRef(false);
   const toggleOaiFocus = useCallback(() => {
     const saved = focusSaved.current;
     if (saved) {
       focusSaved.current = null;
+      focusOn.current = false;
       setActiveLayers(saved);
       setOaiFocus(false);
       return;
@@ -609,8 +624,21 @@ export default function Dashboard() {
       focusSaved.current = prev;
       return Object.fromEntries(Object.entries(prev).map(([k, v]) => [k, KEEP.has(k) ? v : false])) as typeof prev;
     });
+    focusOn.current = true;
     setOaiFocus(true);
   }, []);
+  // The theatre clears the globe for the research, and gives the layers back when it closes;
+  // focus someone switched on themselves stays their choice.
+  const theaterFocused = useRef(false);
+  useEffect(() => {
+    if (oaiTheaterOn && !focusOn.current) {
+      theaterFocused.current = true;
+      toggleOaiFocus();
+    } else if (!oaiTheaterOn && theaterFocused.current) {
+      theaterFocused.current = false;
+      if (focusOn.current) toggleOaiFocus();
+    }
+  }, [oaiTheaterOn, toggleOaiFocus]);
 
   // Global Stats Fetch
   useEffect(() => {
@@ -1509,6 +1537,7 @@ export default function Dashboard() {
 
       {/* ── MAP VIEW CONTROLS ── */}
       <motion.div
+        data-hud
         initial={{ opacity: 0, y: 20 }} animate={revealed ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }} transition={hudIn(0.45)}
         className="absolute bottom-[75px] md:bottom-[100px] z-[200] flex flex-col gap-1.5 pointer-events-none"
         style={{ left: isMobile ? '12px' : '120px' }}
@@ -1532,7 +1561,7 @@ export default function Dashboard() {
       </motion.div>
 
       {/* ── HEADER ── */}
-      <motion.div initial={{ opacity: 0, y: -20 }} animate={revealed ? { opacity: 1, y: 0 } : { opacity: 0, y: -20 }} transition={hudIn(0.15)} className={`absolute top-4 z-[200] pointer-events-none flex flex-col`} style={{ left: isMobile ? '24px' : '64px', right: '24px' }}>
+      <motion.div data-hud initial={{ opacity: 0, y: -20 }} animate={revealed ? { opacity: 1, y: 0 } : { opacity: 0, y: -20 }} transition={hudIn(0.15)} className={`absolute top-4 z-[200] pointer-events-none flex flex-col`} style={{ left: isMobile ? '24px' : '64px', right: '24px' }}>
         <div className="flex items-center gap-3 w-fit">
           <svg viewBox="0 0 650 500" className="w-8 h-8 md:w-10 md:h-10 shrink-0 transition-colors duration-500 text-[#D4AF37] drop-shadow-[0_0_8px_rgba(255,215,0,0.5)]" fill="currentColor">
             <path d="m620.39,364.82c-0.53628-7.2677-1.7767-14.482-5.0286-21.276-9.4786-19.803-33.963-29.34-53.026-19.284-15.333,8.0885-22.563,29.331-13.578,45.149,6.873,12.099,23.072,18.235,35.622,10.228,4.4328-2.828,7.6343-7.2793,8.9938-12.286,1.3595-5.0063,0.68452-10.798-2.9392-15.401-2.2364-2.8407-5.4473-4.7654-9.1114-5.408-3.664-0.64263-8.1708,0.40388-10.875,3.9972-1.7829,2.3692-1.91,4.5449-1.4108,7.1127,0.24961,1.2839,0.78116,2.8399,2.3513,3.9972,1.5702,1.1573,4.2926,1.9424,5.5844,0.58783,1.1069-1.1607-0.67477-3.153-0.73029-4.7559-0.0388-0.83158-0.0772-1.7317,0.26004-2.4745,0.89679-1.1463,1.8493-1.342,3.4682-1.0581,1.6548,0.29023,3.6474,1.4542,4.5851,2.6452v0.0588c2.0224,2.5986,2.3717,5.5943,1.5284,8.6999-0.81645,3.0066-2.8568,5.919-5.4668,7.7006l-0.29391,0.23513c-8.5452,5.4516-18.484,0.70317-23.392-7.9366-6.7162-11.823-1.5113-26.282,10.285-32.505,15.078-7.9537,35.744,1.451,40.36,17.085,4.566,15.464,2.8715,30.938,0.27385,37.511l10.609,0.073c2.5579-12.089,1.9287-15.035,1.9287-22.696z" />
@@ -1553,7 +1582,7 @@ export default function Dashboard() {
 
 
       {/* ── TOP-RIGHT STATUS (desktop) ── */}
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: revealed ? 1 : 0 }} transition={hudIn(0.35)} className="status-bar-desktop absolute top-4 right-6 z-[200] pointer-events-none flex items-center gap-3 text-[10px] font-mono tracking-widest text-[var(--text-muted)]">
+      <motion.div data-hud initial={{ opacity: 0 }} animate={{ opacity: revealed ? 1 : 0 }} transition={hudIn(0.35)} className="status-bar-desktop absolute top-4 right-6 z-[200] pointer-events-none flex items-center gap-3 text-[10px] font-mono tracking-widest text-[var(--text-muted)]">
 
         <span className="hidden lg:inline-flex items-center gap-1.5">
           <ZuluClock />
@@ -1595,12 +1624,12 @@ export default function Dashboard() {
 
 
       {/* ── NEW SIDEBAR (Root Level) ── */}
-      {showLayers && !isMobile && <LayerPanel {...terrainPanelProps} revealed={revealed} data={data} activeLayers={activeLayers} setActiveLayers={setActiveLayers} theme={osirisTheme} setTheme={setOsirisTheme} capabilities={capabilities} />}
+      {showLayers && !isMobile && <div data-hud><LayerPanel {...terrainPanelProps} revealed={revealed} data={data} activeLayers={activeLayers} setActiveLayers={setActiveLayers} theme={osirisTheme} setTheme={setOsirisTheme} capabilities={capabilities} /></div>}
 
 
 
       {/* ── RIGHT TOOL STRIP (desktop only — mobile uses bottom nav) ── */}
-      {!isMobile && <motion.div initial={{ opacity: 0, x: 12 }} animate={revealed ? { opacity: 1, x: 0 } : { opacity: 0, x: 12 }} transition={hudIn(0.3)} className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-[250] pointer-events-auto bg-black/40 backdrop-blur-sm p-1 rounded-full border border-white/5">
+      {!isMobile && <motion.div data-hud initial={{ opacity: 0, x: 12 }} animate={revealed ? { opacity: 1, x: 0 } : { opacity: 0, x: 12 }} transition={hudIn(0.3)} className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-[250] pointer-events-auto bg-black/40 backdrop-blur-sm p-1 rounded-full border border-white/5">
         <div ref={oaiAnchor} className="relative group">
           <button onClick={() => { setShowOai(!showOai); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowSpaceCam(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showOai ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`} title="OAI — swarm forecasting on live intelligence, with your own AI key" aria-label="OAI" aria-expanded={showOai}>
             <Orbit className={`w-4 h-4 ${showOai ? 'text-[var(--gold-primary)]' : 'text-white/60'}`} />
@@ -2155,7 +2184,7 @@ export default function Dashboard() {
       <KeyboardShortcuts />
 
       {/* ── GLOBAL STATUS TICKER (bottom) ── */}
-      <GlobalStatusBar revealed={revealed} />
+      <div data-hud><GlobalStatusBar revealed={revealed} /></div>
 
       {/* Shortcut hint — more visible */}
       <div className="desktop-only absolute bottom-[26px] right-5 z-[200] pointer-events-none text-[9px] font-mono text-[var(--text-muted)] opacity-50 tracking-widest" title="Press ? to see all keyboard shortcuts">

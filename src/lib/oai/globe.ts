@@ -207,7 +207,8 @@ void main() {
   // A selection lights what belongs to it and lets the rest recede.
   float focus = mix(1.0, mix(0.13, 1.35, v_hl), u_dim) * mix(1.0, 1.35, v_hl * (1.0 - u_dim));
 
-  float alpha = clamp(((core + halo) * pattern * base * (0.55 + 0.45 * v_strength) + head + pulse * core) * flash * settle * ends * focus, 0.0, 1.0);
+  // The drawing tip glows along the line itself, not across the whole ribbon.
+  float alpha = clamp(((core + halo) * pattern * base * (0.55 + 0.45 * v_strength) + head * (core + halo * 0.5) + pulse * core) * flash * settle * ends * focus, 0.0, 1.0);
   vec3 col = mix(u_color, vec3(1.0), clamp(core * 0.25 + head * 0.5 + pulse * 0.6, 0.0, 1.0));
   fragColor = vec4(col * alpha, alpha);
 #endif

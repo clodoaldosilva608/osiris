@@ -2490,3 +2490,11 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 4px;
   padding: 1px 5px;
 }
+
+/* OAI's theatre takes the whole screen: the app's own HUD steps back until it closes. */
+html[data-oai-theater] [data-hud],
+html[data-oai-theater] [data-map-controls] {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transition: opacity 0.3s ease;
+}

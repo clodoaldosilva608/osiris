@@ -192,7 +192,8 @@ export function createDirector(map: MlMap, onFollowChange?: (following: boolean)
     if (frameReq) { cancelAnimationFrame(frameReq); frameReq = 0; }
     onFollowChange?.(false);
   };
-  const events = ['dragstart', 'zoomstart', 'rotatestart', 'pitchstart'] as const;
+  // Scroll zoom animates without its event attached; the map's own wheel event carries it.
+  const events = ['wheel', 'dragstart', 'zoomstart', 'rotatestart', 'pitchstart'] as const;
   for (const ev of events) map.on(ev, takeOver);
 
   const direct = (s: RunState) => {
