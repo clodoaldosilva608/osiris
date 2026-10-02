@@ -16,25 +16,25 @@ const get = (id: string, ip: string, signal?: AbortSignal) =>
 
 describe('the event stream', () => {
   it('replays a finished run, closes, and gives the slot back every time', async () => {
-    const started = startRun(input('10.88.0.1'), { chat: createDemoChat() });
+    const started = startRun(input('203.0.113.1'), { chat: createDemoChat() });
     if (!started.ok) throw new Error(started.error);
     await waitForEnd(started.run, 10_000);
     // More replays than one address may hold at once: each must hand its slot back.
     for (let i = 0; i < 15; i++) {
-      const res = await get(started.run.id, '10.88.0.9');
+      const res = await get(started.run.id, '203.0.113.9');
       expect(res.status).toBe(200);
       expect(res.headers.get('content-type')).toContain('text/event-stream');
       const body = await res.text();
       expect(body).toContain('"t":"end"');
     }
-    expect(streams()?.get('10.88.0.9')).toBeUndefined();
+    expect(streams()?.get('203.0.113.9')).toBeUndefined();
   });
 
   it('resumes after the last event seen', async () => {
-    const started = startRun(input('10.88.0.2'), { chat: createDemoChat() });
+    const started = startRun(input('203.0.113.2'), { chat: createDemoChat() });
     if (!started.ok) throw new Error(started.error);
     await waitForEnd(started.run, 10_000);
-    const res = await GET(new Request(`http://localhost/api/oracle/runs/${started.run.id}/events`, { headers: { 'x-real-ip': '10.88.0.10', 'last-event-id': '5' } }), { params: Promise.resolve({ id: started.run.id }) });
+    const res = await GET(new Request(`http://localhost/api/oracle/runs/${started.run.id}/events`, { headers: { 'x-real-ip': '203.0.113.10', 'last-event-id': '5' } }), { params: Promise.resolve({ id: started.run.id }) });
     const ids = [...(await res.text()).matchAll(/^id: (\d+)$/gm)].map(m => Number(m[1]));
     expect(ids[0]).toBe(6);
   });
@@ -42,21 +42,21 @@ describe('the event stream', () => {
   it('gives the slot back when a watcher of a live run goes away', async () => {
     const demo = createDemoChat();
     const slow: ChatFn = async req => { await new Promise(r => setTimeout(r, 40)); return demo(req); };
-    const started = startRun(input('10.88.0.3'), { chat: slow });
+    const started = startRun(input('203.0.113.3'), { chat: slow });
     if (!started.ok) throw new Error(started.error);
     const watcher = new AbortController();
-    const res = await get(started.run.id, '10.88.0.11', watcher.signal);
+    const res = await get(started.run.id, '203.0.113.11', watcher.signal);
     const reader = res.body!.getReader();
     await reader.read();
-    expect(streams()?.get('10.88.0.11')).toBe(1);
+    expect(streams()?.get('203.0.113.11')).toBe(1);
     watcher.abort();
     await reader.cancel().catch(() => {});
-    expect(streams()?.get('10.88.0.11')).toBeUndefined();
+    expect(streams()?.get('203.0.113.11')).toBeUndefined();
     cancelRun(started.run);
   });
 
   it('says so for a run it does not have', async () => {
-    const res = await get('00000000-0000-4000-8000-000000000000', '10.88.0.12');
+    const res = await get('00000000-0000-4000-8000-000000000000', '203.0.113.12');
     expect(res.status).toBe(404);
   });
 });

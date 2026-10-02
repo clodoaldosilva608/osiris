@@ -6,7 +6,7 @@ import { getRun } from './runs';
 let ipN = 0;
 const ctx = (over: Partial<McpContext> = {}): McpContext => ({
   creds: { provider: 'openai', key: 'sk-test-0123456789', model: 'gpt-5-mini' },
-  ip: `10.20.0.${++ipN}`,
+  ip: `192.0.2.${++ipN}`,
   origin: 'https://osirisai.live',
   signal: new AbortController().signal,
   maxWaitSeconds: 20,

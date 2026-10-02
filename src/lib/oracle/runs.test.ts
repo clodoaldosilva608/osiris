@@ -13,7 +13,7 @@ const input = (over: Partial<StartInput> = {}): StartInput => ({
   provider: 'openai',
   model: 'gpt-5-mini',
   key: 'sk-test-0123456789',
-  ip: `10.0.0.${++n}`,
+  ip: `198.51.100.${++n}`,
   ...over,
 });
 
@@ -37,7 +37,7 @@ describe('the run store', () => {
     expect(summary.report?.probability_pct).toBeGreaterThan(0);
     const flat = JSON.stringify(summary);
     expect(flat).not.toContain('sk-test');
-    expect(flat).not.toContain('10.0.0.');
+    expect(flat).not.toContain('198.51.100.');
     expect(flat).not.toContain(run.token);
   });
 
@@ -53,7 +53,7 @@ describe('the run store', () => {
   });
 
   it('limits how many runs one address has going', () => {
-    const ip = '10.9.9.9';
+    const ip = '203.0.113.99';
     const a = startRun(input({ ip }), { chat: slow(200) });
     const b = startRun(input({ ip }), { chat: slow(200) });
     const c = startRun(input({ ip }), { chat: slow(200) });
@@ -104,11 +104,11 @@ describe('the run store', () => {
   });
 
   it('lets one address hold only a few waits open', () => {
-    const ip = '10.77.0.1';
+    const ip = '203.0.113.71';
     const held = Array.from({ length: 6 }, () => waitSlot(ip));
     expect(held.every(Boolean)).toBe(true);
     expect(waitSlot(ip)).toBeNull();
-    expect(waitSlot('10.77.0.2')).not.toBeNull();
+    expect(waitSlot('203.0.113.72')).not.toBeNull();
     held[0]!();
     held[0]!();
     const again = waitSlot(ip);
