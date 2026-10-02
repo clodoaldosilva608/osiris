@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Layers, BarChart3, Newspaper, Search, X, Globe, MapPinned, Route, Radar, Satellite, Moon, ExternalLink, AlertTriangle, Activity, Database, Wifi, Play, Network, Crosshair, Bluetooth, Pentagon, Radio , PenLine } from 'lucide-react';
+import { Layers, BarChart3, Newspaper, Search, X, Globe, MapPinned, Route, Radar, Satellite, Moon, ExternalLink, AlertTriangle, Activity, Database, Wifi, Play, Network, Crosshair, Bluetooth, Pentagon, Radio , PenLine, Sparkles } from 'lucide-react';
 import { type TerrainStatus } from '@/lib/map-terrain';
 import { loadCameraCatalog, mergeCameraCatalog } from '@/lib/camera-catalog';
 import IntelFeed from '@/components/IntelFeed';
@@ -30,6 +30,7 @@ const LayerPanel = dynamic(() => import('@/components/LayerPanel'));
 const SpaceCam = dynamic(() => import('@/components/SpaceCam'), { ssr: false });
 const CameraViewer = dynamic(() => import('@/components/CameraViewer'));
 const OsintPanel = dynamic(() => import('@/components/OsintPanel'));
+const OraclePanel = dynamic(() => import('@/components/OraclePanel'));
 const DrawingToolbar = dynamic(() => import('@/components/DrawingToolbar'), { ssr: false });
 const DrawHud = dynamic(() => import('@/components/DrawHud'), { ssr: false });
 // The measurement helpers are pure functions — importing them directly keeps
@@ -42,6 +43,8 @@ import { diffSweep, appendEvents, type WatchBaseline, type WatchEvent } from '@/
 import { STORAGE_KEY, serializeShapes, deserializeShapes, shapesToGeoJSON, downloadFile } from '@/lib/aoi-export';
 const TokenPanel = dynamic(() => import('@/components/TokenPanel'));
 import SupportMenu from '@/components/SupportMenu';
+import { useOracle } from '@/lib/oracle/client';
+import { frameRun, type OracleGlobe } from '@/lib/oracle/globe';
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -178,6 +181,62 @@ export default function Dashboard() {
   const [showSplash, setShowSplash] = useState(true);
   const [splashStage, setSplashStage] = useState(0);
   const [mapReady, setMapReady] = useState(false);
+
+  // ── OSIRIS Oracle ── the run lives here, not in the panel, so the globe keeps
+  // drawing it while the panel is closed. State goes to the map's Oracle layer
+  // directly rather than through a prop, so the map does not re-render per event.
+  const oracle = useOracle();
+  const [showOracle, setShowOracle] = useState(false);
+  const oracleAnchor = useRef<HTMLDivElement>(null);
+  const [oracleTop, setOracleTop] = useState(0);
+  useLayoutEffect(() => {
+    if (!showOracle) return;
+    const place = () => {
+      const anchor = oracleAnchor.current?.getBoundingClientRect();
+      if (anchor) setOracleTop(Math.round(64 - anchor.top));
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [showOracle]);
+  const [oracleSelected, setOracleSelected] = useState<string | null>(null);
+  const oracleGlobe = useRef<OracleGlobe | null>(null);
+  const oracleState = useRef(oracle.state);
+  useEffect(() => {
+    oracleState.current = oracle.state;
+    oracleGlobe.current?.update(oracle.state);
+  }, [oracle.state]);
+  const handleOracleGlobe = useCallback((globe: OracleGlobe | null) => {
+    oracleGlobe.current = globe;
+    globe?.update(oracleState.current);
+  }, []);
+  const handleOracleSelect = useCallback((key: string) => {
+    setOracleSelected(key);
+    if (window.matchMedia('(max-width: 767px)').matches) setMobilePanel('oracle');
+    else setShowOracle(true);
+  }, []);
+  // A shared link (?oracle=<run>) opens the panel on that run, and the camera
+  // goes to the run rather than to the visitor's city.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('oracle');
+    if (!id) return;
+    autoLocateCancelled.current = true;
+    if (window.matchMedia('(max-width: 767px)').matches) setMobilePanel('oracle');
+    else setShowOracle(true);
+    void oracle.watch(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Frame the world model once it lands, so the arcs draw in view.
+  const framedRun = useRef<string | null>(null);
+  const oracleActors = oracle.state?.actors.length ?? 0;
+  useEffect(() => {
+    if (!oracle.runId || !oracle.state || oracleActors === 0 || framedRun.current === oracle.runId) return;
+    const view = frameRun(oracle.state);
+    if (!view) return;
+    framedRun.current = oracle.runId;
+    autoLocateCancelled.current = true;
+    setFlyToLocation({ ...view, duration: 2600, ts: Date.now() });
+  }, [oracle.runId, oracle.state, oracleActors]);
   const revealed = !showSplash;
   /* True once the splash has finished fading out, not merely started to. */
   const [splashGone, setSplashGone] = useState(false);
@@ -310,7 +369,7 @@ export default function Dashboard() {
   const [arcgisLayers, setArcgisLayers] = useState<Array<{ id: string; title: string; url: string; geojson: any; color: string; visible: boolean; opacity: number }>>([]);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number; bounds?: { west: number; south: number; east: number; north: number } } | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [mobilePanel, setMobilePanel] = useState<'layers'|'markets'|'intel'|'search'|'recon'|'remote'|null>(null);
+  const [mobilePanel, setMobilePanel] = useState<'layers'|'markets'|'intel'|'search'|'recon'|'remote'|'oracle'|null>(null);
   const [mapProjection, setMapProjection] = useState<'globe'|'mercator'>('globe');
   const [terrainFocus, setTerrainFocus] = useState(0);
   const [terrainStatus, setTerrainStatus] = useState<TerrainStatus>('idle');
@@ -505,10 +564,32 @@ export default function Dashboard() {
     if (urlTimer.current) clearTimeout(urlTimer.current);
     urlTimer.current = setTimeout(() => {
       const active = Object.entries(activeLayers).filter(([,v]) => v).map(([k]) => k).join(',');
-      const url = `${window.location.pathname}?layers=${active}`;
+      // A forecast being watched keeps its place in the address, so the address bar stays shareable.
+      const oracleRun = new URLSearchParams(window.location.search).get('oracle');
+      const url = `${window.location.pathname}?layers=${active}${oracleRun ? `&oracle=${encodeURIComponent(oracleRun)}` : ''}`;
       window.history.replaceState(null, '', url);
     }, 1500);
   }, [activeLayers]);
+
+  // Oracle focus: clear the globe of the other layers while a forecast draws,
+  // and put back exactly what was on when focus ends.
+  const [oracleFocus, setOracleFocus] = useState(false);
+  const focusSaved = useRef<typeof activeLayers | null>(null);
+  const toggleOracleFocus = useCallback(() => {
+    const saved = focusSaved.current;
+    if (saved) {
+      focusSaved.current = null;
+      setActiveLayers(saved);
+      setOracleFocus(false);
+      return;
+    }
+    const KEEP = new Set(['day_night', 'live_clouds', 'terrain_3d', 'terrain_elevation']);
+    setActiveLayers(prev => {
+      focusSaved.current = prev;
+      return Object.fromEntries(Object.entries(prev).map(([k, v]) => [k, KEEP.has(k) ? v : false])) as typeof prev;
+    });
+    setOracleFocus(true);
+  }, []);
 
   // Global Stats Fetch
   useEffect(() => {
@@ -1306,6 +1387,8 @@ export default function Dashboard() {
           onDrawComplete={handleDrawComplete}
           drawnPolygons={drawnPolygons}
           aircraftAirports={aircraftAirports}
+          onOracleGlobe={handleOracleGlobe}
+          onOracleSelect={handleOracleSelect}
         />
       </ErrorBoundary>
 
@@ -1483,8 +1566,30 @@ export default function Dashboard() {
 
       {/* ── RIGHT TOOL STRIP (desktop only — mobile uses bottom nav) ── */}
       {!isMobile && <motion.div initial={{ opacity: 0, x: 12 }} animate={revealed ? { opacity: 1, x: 0 } : { opacity: 0, x: 12 }} transition={hudIn(0.3)} className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-[250] pointer-events-auto bg-black/40 backdrop-blur-sm p-1 rounded-full border border-white/5">
+        <div ref={oracleAnchor} className="relative group">
+          <button onClick={() => { setShowOracle(!showOracle); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowSpaceCam(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showOracle ? 'bg-[#B388FF]/20' : 'hover:bg-white/10'}`} title="Oracle — swarm forecasting on live intelligence, with your own AI key" aria-label="Oracle" aria-expanded={showOracle}>
+            <Sparkles className={`w-4 h-4 ${showOracle ? 'text-[#B388FF]' : 'text-white/60'}`} />
+            {showOracle && (
+              <span
+                aria-hidden="true"
+                className="absolute -right-1 top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-full bg-current text-[#B388FF]"
+              />
+            )}
+            {oracle.state?.status === 'running' && <span aria-hidden="true" className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-[#B388FF] animate-pulse" />}
+          </button>
+          <span className="absolute right-11 top-1/2 -translate-y-1/2 px-2 py-1 text-[9px] font-mono tracking-wider text-white/80 bg-black/80 backdrop-blur-sm rounded whitespace-nowrap opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none">ORACLE</span>
+          <AnimatePresence>
+            {showOracle && (
+              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-12 w-[400px]" style={{ top: oracleTop }}>
+                <OraclePanel oracle={oracle} selected={oracleSelected} onClose={() => setShowOracle(false)} focus={oracleFocus} onFocus={toggleOracleFocus}
+                  onLocate={(lat, lng, zoom) => setFlyToLocation({ lat, lng, zoom, ts: Date.now() })} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
         <div className="relative group">
-          <button onClick={() => { setShowIntel(!showIntel); setShowMarkets(false); setShowAlerts(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showIntel ? 'bg-[var(--cyan-primary)]/20' : 'hover:bg-white/10'}`} title="OSINT Recon — IP lookup, network sweep, geolocation" aria-label="OSINT Recon" aria-expanded={showIntel}>
+          <button onClick={() => { setShowIntel(!showIntel); setShowOracle(false); setShowMarkets(false); setShowAlerts(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showIntel ? 'bg-[var(--cyan-primary)]/20' : 'hover:bg-white/10'}`} title="OSINT Recon — IP lookup, network sweep, geolocation" aria-label="OSINT Recon" aria-expanded={showIntel}>
             <Radar className={`w-4 h-4 ${showIntel ? 'text-[var(--cyan-primary)]' : 'text-white/60'}`} />
             {showIntel && (
               <span
@@ -1510,7 +1615,7 @@ export default function Dashboard() {
         </div>
 
         <div className="relative group">
-          <button onClick={() => { setShowIntel(false); setShowAlerts(false); setShowMarkets(false); setShowSpaceCam(v => !v); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showSpaceCam ? 'bg-[#00E5FF]/20' : 'hover:bg-white/10'}`} title="Live from Space — 24/7 video downlink from the ISS" aria-label="Live from Space" aria-expanded={showSpaceCam}>
+          <button onClick={() => { setShowIntel(false); setShowOracle(false); setShowAlerts(false); setShowMarkets(false); setShowSpaceCam(v => !v); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showSpaceCam ? 'bg-[#00E5FF]/20' : 'hover:bg-white/10'}`} title="Live from Space — 24/7 video downlink from the ISS" aria-label="Live from Space" aria-expanded={showSpaceCam}>
             <Radio className={`w-4 h-4 ${showSpaceCam ? 'text-[#00E5FF]' : 'text-white/60'}`} />
             {showSpaceCam && (
               <span
@@ -1530,7 +1635,7 @@ export default function Dashboard() {
         </div>
 
         <div ref={marketsAnchor} className="relative group">
-          <button onClick={() => { setShowMarkets(!showMarkets); setShowIntel(false); setShowAlerts(false); setShowSpaceCam(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showMarkets ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`} title="Markets — crypto prices, space weather, global indices" aria-label="Markets" aria-expanded={showMarkets}>
+          <button onClick={() => { setShowMarkets(!showMarkets); setShowOracle(false); setShowIntel(false); setShowAlerts(false); setShowSpaceCam(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showMarkets ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`} title="Markets — crypto prices, space weather, global indices" aria-label="Markets" aria-expanded={showMarkets}>
             <BarChart3 className={`w-4 h-4 ${showMarkets ? 'text-[var(--gold-primary)]' : 'text-white/60'}`} />
             {showMarkets && (
               <span
@@ -1550,7 +1655,7 @@ export default function Dashboard() {
         </div>
 
         <div className="relative group">
-          <button onClick={() => { setShowAlerts(!showAlerts); setShowIntel(false); setShowMarkets(false); setShowDrawing(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showAlerts ? 'bg-[#FF3D3D]/20' : 'hover:bg-white/10'}`} title="Live Alerts — earthquakes, conflicts, breaking news" aria-label="Live Alerts" aria-expanded={showAlerts}>
+          <button onClick={() => { setShowAlerts(!showAlerts); setShowOracle(false); setShowIntel(false); setShowMarkets(false); setShowDrawing(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showAlerts ? 'bg-[#FF3D3D]/20' : 'hover:bg-white/10'}`} title="Live Alerts — earthquakes, conflicts, breaking news" aria-label="Live Alerts" aria-expanded={showAlerts}>
             <AlertTriangle className={`w-4 h-4 ${showAlerts ? 'text-[#FF3D3D]' : 'text-white/60'}`} />
             {showAlerts && (
               <span
@@ -1784,6 +1889,7 @@ export default function Dashboard() {
                 { id: 'markets' as const, icon: BarChart3, label: 'MARKETS' },
                 { id: 'intel' as const, icon: Newspaper, label: 'INTEL' },
                 { id: 'recon' as const, icon: Radar, label: 'RECON' },
+                { id: 'oracle' as const, icon: Sparkles, label: 'ORACLE' },
                 { id: 'search' as const, icon: Search, label: 'SEARCH' },
                 // Routing was reachable only from the desktop tool rail, so a
                 // phone could not open it at all. It sits next to SEARCH
@@ -1840,7 +1946,7 @@ export default function Dashboard() {
                 <div className="px-3 pb-3">
                   <div className="flex items-center justify-between mb-2">
                     <span className="hud-text text-[10px] text-[var(--text-primary)]">
-                      {mobilePanel === 'layers' ? 'LAYERS & STATS' : mobilePanel === 'markets' ? 'MARKETS & INTEL' : mobilePanel === 'intel' ? 'INTEL FEED' : mobilePanel === 'recon' ? 'OSIRIS RECON' : mobilePanel === 'remote' ? 'WORLD REMOTE' : 'SEARCH'}
+                      {mobilePanel === 'layers' ? 'LAYERS & STATS' : mobilePanel === 'markets' ? 'MARKETS & INTEL' : mobilePanel === 'intel' ? 'INTEL FEED' : mobilePanel === 'recon' ? 'OSIRIS RECON' : mobilePanel === 'remote' ? 'WORLD REMOTE' : mobilePanel === 'oracle' ? 'OSIRIS ORACLE' : 'SEARCH'}
                     </span>
                     <button onClick={() => setMobilePanel(null)} className="text-[var(--text-muted)] p-1"><X className="w-4 h-4" /></button>
                   </div>
@@ -1862,6 +1968,10 @@ export default function Dashboard() {
                     </>
                   )}
                   {mobilePanel === 'markets' && <MarketsPanel data={data} spaceWeather={spaceWeather} />}
+                  {mobilePanel === 'oracle' && (
+                    <OraclePanel oracle={oracle} selected={oracleSelected} embedded focus={oracleFocus} onFocus={toggleOracleFocus}
+                      onLocate={(lat, lng, zoom) => setFlyToLocation({ lat, lng, zoom, ts: Date.now() })} />
+                  )}
                   {mobilePanel === 'intel' && <IntelFeed data={data} onLocate={(lat, lng) => { setFlyToLocation({ lat, lng, ts: Date.now() }); setMobilePanel(null); }} />}
                   {mobilePanel === 'search' && (
                     <div className="space-y-2">

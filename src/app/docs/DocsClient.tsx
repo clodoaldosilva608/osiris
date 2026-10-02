@@ -13,6 +13,7 @@ const GUIDE_SECTIONS = [
   { id: 'self-hosting', title: 'Self-Hosting' },
   { id: 'configuration', title: 'Configuration' },
   { id: 'interface', title: 'Interface Guide' },
+  { id: 'oracle', title: 'Oracle & MCP' },
   { id: 'shortcuts', title: 'Keyboard Shortcuts' },
 ];
 
@@ -485,6 +486,114 @@ docker compose up -d`}</Pre>
             </div>
           </Section>
 
+          <Section id="oracle" eyebrow="Guide" title="Oracle & MCP">
+            <p>
+              The Oracle is OSIRIS&apos;s prediction engine. Ask it a question and it builds a world model from the
+              live feeds (the actors, where they are, how they relate), assembles a deliberately diverse panel of
+              simulated forecasters, and lets them debate over several rounds: each one posts a probability, replies to
+              the others, and updates. A report agent then writes a calibrated forecast with its drivers, scenarios,
+              signposts to watch and the strongest dissent. While it thinks, the analysis draws itself on the globe as
+              purple arcs, and you can inject an event mid-run from a god&apos;s-eye view or question any panelist after.
+            </p>
+            <div className="grid sm:grid-cols-2 gap-2.5">
+              {[
+                { k: 'Your own key', v: 'OpenAI, Anthropic, Google Gemini, OpenRouter, Groq, DeepSeek, xAI, Mistral or Qwen. The key stays in your browser and travels in a header with your requests; the server uses it for your run and never stores or logs it.' },
+                { k: 'Cost', v: 'Quick: 6 agents × 2 rounds, about 15 model calls. Standard: 10 × 3, about 33. Deep: 16 × 4, about 67. Billed by your provider at its own rates.' },
+                { k: 'Sharing', v: 'Every run has a link, /?oracle=<id>, that replays the whole analysis on the globe for anyone who opens it. Runs are kept for three hours after they finish.' },
+                { k: 'Steering', v: 'Whoever started a run holds its token: they alone can inject events into it or stop it. Anyone with a key can question the panel.' },
+              ].map(row => (
+                <div key={row.k} className="rounded-xl border border-white/[0.07] bg-white/[0.015] p-3.5">
+                  <div className="font-mono text-[11.5px] text-[#B388FF] mb-1.5">{row.k}</div>
+                  <div className="text-[12.5px] leading-[1.7] text-[var(--text-secondary)]">{row.v}</div>
+                </div>
+              ))}
+            </div>
+
+            <p className="pt-2">From code, start a run, then follow it over Server-Sent Events or wait for it:</p>
+            <CodeBlock
+              label="Forecast over the REST API"
+              tabs={[
+                {
+                  label: 'cURL',
+                  lang: 'bash',
+                  code: `# Start: answers 202 with the run id, a watch link and a run token
+curl -s -X POST ${origin}/api/oracle/runs \\
+  -H "Content-Type: application/json" \\
+  -H "X-Oracle-Provider: openai" \\
+  -H "X-Oracle-Key: $OPENAI_API_KEY" \\
+  -d '{"question": "Will the Fed cut rates at its next meeting?", "depth": "quick"}'
+
+# Wait up to 55 s for the forecast (repeat until status is "done")
+curl -s "${origin}/api/oracle/runs/RUN_ID?wait=55"
+
+# Or watch it happen
+curl -N ${origin}/api/oracle/runs/RUN_ID/events`,
+                },
+              ]}
+            />
+
+            <p>
+              The same engine is an MCP server at <Code>{`${origin}/api/mcp`}</Code> (Streamable HTTP). Give an agent the
+              tools <Code>oracle_predict</Code>, <Code>oracle_get_run</Code>, <Code>oracle_ask</Code>,{' '}
+              <Code>oracle_inject</Code> and <Code>oracle_cancel</Code>, plus <Code>osiris_world_brief</Code> and{' '}
+              <Code>osiris_markets</Code>, which are free and need no key. The model key is set once on the connection, as
+              headers, so it never appears in the agent&apos;s conversation.
+            </p>
+            <CodeBlock
+              label="Connect an agent"
+              tabs={[
+                {
+                  label: 'Hermes',
+                  lang: 'yaml',
+                  code: `# ~/.hermes/config.yaml
+mcp_servers:
+  osiris:
+    url: "${origin}/api/mcp"
+    headers:
+      X-Oracle-Provider: "anthropic"
+      X-Oracle-Key: "sk-ant-..."
+      X-Oracle-Model: "claude-haiku-4-5-20251001"
+    timeout: 300`,
+                },
+                {
+                  label: 'Claude Code',
+                  lang: 'bash',
+                  code: `claude mcp add --transport http osiris ${origin}/api/mcp \\
+  --header "X-Oracle-Provider: openai" \\
+  --header "X-Oracle-Key: $OPENAI_API_KEY"`,
+                },
+                {
+                  label: 'Cursor / JSON',
+                  lang: 'json',
+                  code: `{
+  "mcpServers": {
+    "osiris": {
+      "url": "${origin}/api/mcp",
+      "headers": {
+        "X-Oracle-Provider": "google",
+        "X-Oracle-Key": "AIza..."
+      }
+    }
+  }
+}`,
+                },
+              ]}
+            />
+            <Callout tone="info" title="How long a forecast takes">
+              One to five minutes, depending on depth and provider. <Code>oracle_predict</Code> waits for it when the
+              client accepts a streamed response, sending progress as each phase and round completes. Over plain JSON it
+              waits about 80 seconds, then returns the run id to poll with <Code>oracle_get_run</Code> and{' '}
+              <Code>wait_seconds</Code>.
+            </Callout>
+            <p className="text-[12px] text-[var(--text-muted)]">
+              The method follows{' '}
+              <a href="https://github.com/666ghj/MiroFish" target="_blank" rel="noopener noreferrer" className="underline hover:text-white">MiroFish</a>,
+              the open-source swarm-intelligence engine: seed a parallel world from real material, populate it with agents,
+              let them interact while you inject variables, then hand the simulation to a report agent. OSIRIS rebuilds that
+              method natively for its own feeds and globe; no MiroFish code is used. A simulation, not a guarantee.
+            </p>
+          </Section>
+
           <Section id="shortcuts" eyebrow="Guide" title="Keyboard Shortcuts">
             <p>
               Press <Code>?</Code> at any time inside the application to bring up this list.
@@ -521,7 +630,8 @@ docker compose up -d`}</Pre>
             <p>
               All routes live under <Code>/api</Code> on whatever origin serves the application. Reads are{' '}
               <Code>GET</Code>, writes are <Code>POST</Code> with a JSON body. Nothing requires authentication except{' '}
-              <Code>/api/sdk/ingest</Code> and <Code>/api/github-webhook</Code>.
+              <Code>/api/sdk/ingest</Code> and <Code>/api/github-webhook</Code>. The Oracle runs on a model key you bring,
+              sent in the <Code>X-Oracle-Key</Code> header.
             </p>
             <div className="space-y-2.5">
               {[

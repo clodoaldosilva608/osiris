@@ -19,6 +19,7 @@
  * draws the analysis while it happens.
  */
 import { roundStat } from './aggregate';
+import { DEPTHS, estimateCalls } from './depths';
 import { gatherContext } from './context';
 import { extractJson, parseAgents, parsePost, parseReport, parseWorld } from './parse';
 import {
@@ -28,17 +29,7 @@ import { ProviderError, type ChatFn, type ChatRequest } from './providers';
 import type { RunState } from './state';
 import type { Agent, ContextItem, Depth, Link, OracleEvent, Post, RoundStat, Usage } from './types';
 
-export const DEPTHS: Record<Depth, { label: string; agents: number; rounds: number; feed: number }> = {
-  quick: { label: 'Quick', agents: 6, rounds: 2, feed: 14 },
-  standard: { label: 'Standard', agents: 10, rounds: 3, feed: 20 },
-  deep: { label: 'Deep', agents: 16, rounds: 4, feed: 28 },
-};
-
-/** Model calls a run makes, before any retries: world, panel, every turn, report. */
-export function estimateCalls(depth: Depth): number {
-  const d = DEPTHS[depth];
-  return 3 + d.agents * d.rounds;
-}
+export { DEPTHS, estimateCalls };
 
 export interface EngineInput {
   question: string;

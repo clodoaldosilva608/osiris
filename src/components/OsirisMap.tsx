@@ -6,6 +6,7 @@ import * as maplibregl from 'maplibre-gl';
 import { installTerrainTileProtocol } from '@/lib/terrain-tiles';
 import { CLOUDS_ATTRIBUTION, CLOUDS_CREDIT, CLOUDS_LAYER, frameTime } from '@/lib/live-clouds';
 import { createCloudLayer } from '@/lib/live-clouds-layer';
+import { attachOracle, type OracleGlobe } from '@/lib/oracle/globe';
 import { createSatelliteLayer, parseColor, SAT_MAX_ZOOM, type SatPoint } from '@/lib/satellite-layer';
 import { MAP_DEFAULTS, MAP_PALETTE_KEYS, readMapPalette, satColorFor, type MapPalette } from '@/lib/map-palette';
 import { STYLE_EVENT } from '@/lib/style-tokens';
@@ -90,6 +91,10 @@ interface OsirisMapProps {
   navigating?: boolean;
   /** Corroborated endpoint airports for watched aircraft, keyed by icao24. */
   aircraftAirports?: Record<string, Array<{ icao: string; iata?: string; city?: string; lat: number; lng: number }>>;
+  /** Hands the page the Oracle's globe layer, so a run draws without re-rendering the map. Null when it goes. */
+  onOracleGlobe?: (globe: OracleGlobe | null) => void;
+  /** A node of the Oracle's analysis was clicked ("g:<agent>", "a:<actor>"). */
+  onOracleSelect?: (key: string) => void;
 }
 
 function computeSolarTerminator(): [number, number][] {
@@ -167,7 +172,7 @@ interface AlertPinFeature {
   properties: AlertPinProps;
 }
 
-function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, onReady, flyToLocation, alertPinIds = null, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, theme = 'core', drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {} }: OsirisMapProps) {
+function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, onReady, flyToLocation, alertPinIds = null, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, theme = 'core', drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {}, onOracleGlobe, onOracleSelect }: OsirisMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -195,6 +200,9 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
   const prevArcgisLayersRef = useRef<string[]>([]);
   const satLayerRef = useRef<ReturnType<typeof createSatelliteLayer> | null>(null);
   const cloudLayerRef = useRef<ReturnType<typeof createCloudLayer> | null>(null);
+  const onOracleGlobeRef = useRef(onOracleGlobe);
+  const onOracleSelectRef = useRef(onOracleSelect);
+  useEffect(() => { onOracleGlobeRef.current = onOracleGlobe; onOracleSelectRef.current = onOracleSelect; }, [onOracleGlobe, onOracleSelect]);
   // pick() returns an index into the array last handed to setPoints, so the
   // matching catalogue rows are kept in the same order to resolve it.
   const satRowsRef = useRef<SatelliteRow[]>([]);
@@ -2686,6 +2694,20 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     const refresh = setInterval(() => clouds.setFrame(frameTime()), 5 * 60_000);
     return () => clearInterval(refresh);
   }, [mapReady, activeLayers.live_clouds, mapStyle]);
+
+  // OSIRIS Oracle — a forecast's analysis drawn as it happens: actors, panelists
+  // and purple arcs through the sky (see lib/oracle/globe). The page feeds it
+  // run state directly, so the map does not re-render on every event; the
+  // layer re-adds itself after a style change.
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+    const globe = attachOracle(mapRef.current, key => onOracleSelectRef.current?.(key));
+    onOracleGlobeRef.current?.(globe);
+    return () => {
+      onOracleGlobeRef.current?.(null);
+      globe.destroy();
+    };
+  }, [mapReady]);
 
   // ── DRAWN POLYGONS ──
   useEffect(() => {
