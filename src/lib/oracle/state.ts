@@ -107,8 +107,9 @@ export function applyEvent(s: RunState, e: Stamped): RunState {
       break;
     case 'post': {
       n.posts = [...s.posts, e.post];
-      const { [e.post.agent]: _done, ...rest } = s.thinking;
-      n.thinking = rest;
+      const thinking = { ...s.thinking };
+      delete thinking[e.post.agent];
+      n.thinking = thinking;
       break;
     }
     case 'round':

@@ -3,7 +3,8 @@ import { PROVIDERS, ProviderError, createChat, isPlausibleKey, isPlausibleModel,
 
 const KEY = 'sk-test-0123456789abcdef';
 
-type Call = { url: string; init: RequestInit; body: any };
+type Body = Record<string, unknown> & { generationConfig?: Record<string, unknown> };
+type Call = { url: string; init: RequestInit; body: Body };
 
 function fakeFetch(...responses: (Response | (() => Response))[]) {
   const calls: Call[] = [];
@@ -58,7 +59,8 @@ describe('createChat', () => {
     expect((calls[0].init.headers as Record<string, string>).authorization).toBe(`Bearer ${KEY}`);
     expect(calls[0].body).toMatchObject({ model: 'gpt-5-mini', response_format: { type: 'json_object' } });
     expect(calls[0].body.temperature).toBeUndefined();
-    expect(calls[0].body.max_completion_tokens).toBeGreaterThanOrEqual(500);
+    expect(calls[0].body.reasoning_effort).toBe('low');
+    expect(calls[0].body.max_completion_tokens as number).toBeGreaterThanOrEqual(500);
   });
 
   it('speaks Anthropic', async () => {
@@ -79,7 +81,7 @@ describe('createChat', () => {
     expect(calls[0].url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent');
     expect(calls[0].url).not.toContain(KEY);
     expect((calls[0].init.headers as Record<string, string>)['x-goog-api-key']).toBe(KEY);
-    expect(calls[0].body.generationConfig.responseMimeType).toBe('application/json');
+    expect(calls[0].body.generationConfig?.responseMimeType).toBe('application/json');
   });
 
   it('drops a field the model refuses and tries again', async () => {
@@ -91,6 +93,16 @@ describe('createChat', () => {
     expect((await chat(REQ)).text).toBe('ok');
     expect(calls[0].body.temperature).toBe(0.7);
     expect(calls[1].body.temperature).toBeUndefined();
+  });
+
+  it('drops reasoning effort for a model that will not take it', async () => {
+    const { f, calls } = fakeFetch(
+      jsonRes({ error: { message: "Unrecognized request argument supplied: reasoning_effort" } }, 400),
+      openaiReply('ok'),
+    );
+    expect((await createChat('openai', KEY, 'gpt-5-chat-latest', f)(REQ)).text).toBe('ok');
+    expect(calls[0].body.reasoning_effort).toBe('low');
+    expect(calls[1].body.reasoning_effort).toBeUndefined();
   });
 
   it('retries once when the provider is busy', async () => {

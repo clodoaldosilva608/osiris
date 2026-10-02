@@ -223,6 +223,29 @@ export function subscribe(run: Run, after: number, listener: (e: Stamped) => voi
   return () => { run.listeners.delete(listener); };
 }
 
+const MAX_WAITS_PER_IP = 6;
+const waits = ((globalThis as unknown as { __osirisOracleWaits?: Map<string, number> }).__osirisOracleWaits ??= new Map());
+
+/**
+ * A slot for one held-open wait (a long-poll, an MCP call waiting on a run),
+ * or null when this address already holds its share. Call the returned
+ * function to give the slot back. Without this, one client could park
+ * hundreds of connections on the server, each waiting minutes.
+ */
+export function waitSlot(ip: string): (() => void) | null {
+  const n = waits.get(ip) ?? 0;
+  if (n >= MAX_WAITS_PER_IP) return null;
+  waits.set(ip, n + 1);
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const left = (waits.get(ip) ?? 1) - 1;
+    if (left > 0) waits.set(ip, left);
+    else waits.delete(ip);
+  };
+}
+
 /** Resolves when the run ends, the time is up, or `signal` aborts. */
 export function waitForEnd(run: Run, ms: number, signal?: AbortSignal): Promise<void> {
   if (!active(run) || ms <= 0) return Promise.resolve();

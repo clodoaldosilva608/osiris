@@ -122,19 +122,38 @@ export function useOracle() {
   const [state, setState] = useState<RunState | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  // Read from this browser on the first client render; the server has no storage and renders none.
+  const [history, setHistory] = useState<HistoryEntry[]>(loadHistory);
   const [token, setToken] = useState<string | null>(null);
   const source = useRef<EventSource | null>(null);
   const queue = useRef<Stamped[]>([]);
   const frame = useRef(0);
+  /** The run as folded so far, and whose it is: the stream handler reads these outside React's render. */
+  const latest = useRef<RunState | null>(null);
+  const following = useRef<string | null>(null);
 
-  useEffect(() => { setHistory(loadHistory()); }, []);
+  /** Keeps the history entry in step with how a run ended. */
+  const record = useCallback((id: string, s: RunState) => {
+    const probability = currentProbability(s);
+    setHistory(h => {
+      const i = h.findIndex(x => x.id === id);
+      if (i < 0 || (h[i].status === s.status && h[i].probability === probability)) return h;
+      const next = h.slice();
+      next[i] = { ...h[i], status: s.status, probability };
+      write('local', HISTORY_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
 
   const flush = useCallback(() => {
     frame.current = 0;
     const events = queue.current.splice(0);
-    if (events.length) setState(s => events.reduce(applyEvent, s ?? initialState()));
-  }, []);
+    if (!events.length) return;
+    const next = events.reduce(applyEvent, latest.current ?? initialState());
+    latest.current = next;
+    setState(next);
+    if (following.current && next.status !== 'running') record(following.current, next);
+  }, [record]);
 
   const close = useCallback(() => {
     source.current?.close();
@@ -150,6 +169,8 @@ export function useOracle() {
   const watch = useCallback(async (id: string): Promise<boolean> => {
     if (!/^[0-9a-f-]{36}$/i.test(id)) return false;
     close();
+    latest.current = null;
+    following.current = id;
     setError('');
     setState(null);
     setRunId(id);
@@ -203,20 +224,6 @@ export function useOracle() {
     return body.id;
   }, [watch]);
 
-  // Keep the history entry in step with how the run ends.
-  useEffect(() => {
-    if (!runId || !state || state.status === 'running') return;
-    const probability = currentProbability(state);
-    setHistory(h => {
-      const i = h.findIndex(x => x.id === runId);
-      if (i < 0 || (h[i].status === state.status && h[i].probability === probability)) return h;
-      const next = h.slice();
-      next[i] = { ...h[i], status: state.status, probability };
-      write('local', HISTORY_KEY, JSON.stringify(next));
-      return next;
-    });
-  }, [runId, state]);
-
   const cancel = useCallback(async () => {
     if (!runId || !token) return;
     await fetch(`/api/oracle/runs/${runId}`, { method: 'DELETE', headers: { 'x-oracle-run-token': token } }).catch(() => null);
@@ -247,6 +254,8 @@ export function useOracle() {
 
   const clear = useCallback(() => {
     close();
+    latest.current = null;
+    following.current = null;
     setState(null);
     setRunId(null);
     setToken(null);

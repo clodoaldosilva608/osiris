@@ -156,7 +156,7 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
   // 2. World model
   s.emit({ t: 'phase', phase: 'graph', label: 'Mapping actors and relations' });
   const world = parseWorld(
-    await s.json({ user: worldPrompt(input.question, input.seed, context, today), maxTokens: 3500, temperature: 0.4 }),
+    await s.json({ user: worldPrompt(input.question, input.seed, context, today), maxTokens: 3500, temperature: 0.4, timeoutMs: 150_000 }),
     input.question, context,
   );
   if (world.actors.length < 2) throw new Error('The model did not return a usable world model. Try again, or pick a stronger model.');
@@ -169,7 +169,7 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
 
   // 3. The panel
   s.emit({ t: 'phase', phase: 'agents', label: `Assembling a panel of ${depth.agents}` });
-  const agentsRaw = await s.json({ user: agentsPrompt(brief, depth.agents, today), maxTokens: 3500, temperature: 0.9 });
+  const agentsRaw = await s.json({ user: agentsPrompt(brief, depth.agents, today), maxTokens: 3500, temperature: 0.9, timeoutMs: 150_000 });
   const agents = parseAgents(agentsRaw, depth.agents, actorIds);
   if (agents.length < 3) throw new Error('The model did not assemble a usable panel. Try again, or pick a stronger model.');
   for (const agent of agents) {
@@ -248,7 +248,7 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
   const finals = [...new Map(posts.map(p => [p.agent, p])).values()].map(post => ({ agent: byId.get(post.agent)!, post }));
   const swarm = stats[stats.length - 1].consensus;
   const report = parseReport(
-    await s.json({ user: reportPrompt({ brief, rounds: stats, finals, injects: injected, evidence, today }), maxTokens: 3000, temperature: 0.3 }),
+    await s.json({ user: reportPrompt({ brief, rounds: stats, finals, injects: injected, evidence, today }), maxTokens: 3000, temperature: 0.3, timeoutMs: 150_000 }),
     swarm, actorIds,
   );
   s.emit({ t: 'report', report });

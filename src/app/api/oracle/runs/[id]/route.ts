@@ -1,4 +1,5 @@
-import { cancelRun, getRun, ownsRun, runSummary, waitForEnd } from '@/lib/oracle/runs';
+import { getClientIp } from '@/lib/ssrf-guard';
+import { cancelRun, getRun, ownsRun, runSummary, waitForEnd, waitSlot } from '@/lib/oracle/runs';
 import { disabled, disabledResponse, fail, json, siteOrigin } from '@/lib/oracle/service';
 
 /**
@@ -19,7 +20,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
   const url = new URL(req.url);
   const wait = Math.min(55, Math.max(0, Number(url.searchParams.get('wait')) || 0));
-  if (wait) await waitForEnd(run, wait * 1000, req.signal);
+  // A wait past this address's share of held connections answers at once instead.
+  const release = wait ? waitSlot(getClientIp(req)) : null;
+  if (release) {
+    try { await waitForEnd(run, wait * 1000, req.signal); } finally { release(); }
+  }
 
   if (url.searchParams.get('view') === 'full') {
     return json({ id: run.id, status: run.state.status, events: run.events });

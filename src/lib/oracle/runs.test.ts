@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { createDemoChat } from './demo';
-import { LIMITS, cancelRun, getRun, injectEvent, ownsRun, runSummary, startRun, subscribe, waitForEnd, type StartInput } from './runs';
+import { LIMITS, cancelRun, getRun, injectEvent, ownsRun, runSummary, startRun, subscribe, waitForEnd, waitSlot, type StartInput } from './runs';
 import type { ChatFn } from './providers';
 import type { Stamped } from './types';
 
@@ -101,6 +101,20 @@ describe('the run store', () => {
     await waitForEnd(started.run, 5_000);
     expect(started.run.state.status).toBe('failed');
     expect(started.run.state.message).not.toContain(key);
+  });
+
+  it('lets one address hold only a few waits open', () => {
+    const ip = '10.77.0.1';
+    const held = Array.from({ length: 6 }, () => waitSlot(ip));
+    expect(held.every(Boolean)).toBe(true);
+    expect(waitSlot(ip)).toBeNull();
+    expect(waitSlot('10.77.0.2')).not.toBeNull();
+    held[0]!();
+    held[0]!();
+    const again = waitSlot(ip);
+    expect(again).not.toBeNull();
+    expect(waitSlot(ip)).toBeNull();
+    [again, ...held.slice(1)].forEach(r => r!());
   });
 
   it('does not find runs by malformed ids', () => {

@@ -11,7 +11,7 @@
  */
 import { briefing } from './context';
 import { providerInfo } from './providers';
-import { cancelRun, getRun, injectEvent, ownsRun, runSummary, subscribe, waitForEnd, watchUrl, type Run } from './runs';
+import { cancelRun, getRun, injectEvent, ownsRun, runSummary, subscribe, waitForEnd, waitSlot, watchUrl, type Run } from './runs';
 import { CREDIT, ORACLE_VERSION, askPrediction, describe, startPrediction, type Credentials } from './service';
 import { num, oneOf, text } from './parse';
 import type { StartDeps } from './runs';
@@ -199,6 +199,17 @@ function headline(run: Run): string {
 /** Waits for a run, reporting each phase and round as progress when the client asked for it. */
 async function follow(run: Run, seconds: number, ctx: McpContext): Promise<void> {
   if (seconds <= 0 || run.state.status !== 'running') return;
+  // Past this address's share of held connections, answer at once: the caller polls instead.
+  const release = waitSlot(ctx.ip);
+  if (!release) return;
+  try {
+    await followHeld(run, seconds, ctx);
+  } finally {
+    release();
+  }
+}
+
+async function followHeld(run: Run, seconds: number, ctx: McpContext): Promise<void> {
   const total = 5 + run.state.roundsPlanned;
   const step = () => {
     const s = run.state;

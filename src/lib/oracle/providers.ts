@@ -96,16 +96,20 @@ const DEFS: ProviderDef[] = ([
 
 const BY_ID = new Map(DEFS.map(d => [d.id, d]));
 
+const publicInfo = (d: ProviderDef): ProviderInfo => ({
+  id: d.id, name: d.name, keyUrl: d.keyUrl, keyHint: d.keyHint, defaultModel: d.defaultModel,
+  suggested: d.suggested, concurrency: d.concurrency, needsKey: d.needsKey,
+});
+
 /** Public descriptions, without the wire details. */
-export const PROVIDERS: ProviderInfo[] = DEFS.map(({ wire: _w, base: _b, ...info }) => info);
+export const PROVIDERS: ProviderInfo[] = DEFS.map(publicInfo);
 
 export function isProviderId(v: unknown): v is ProviderId {
   return typeof v === 'string' && BY_ID.has(v as ProviderId);
 }
 
 export function providerInfo(id: ProviderId): ProviderInfo {
-  const { wire: _w, base: _b, ...info } = BY_ID.get(id)!;
-  return info;
+  return publicInfo(BY_ID.get(id)!);
 }
 
 /** A key we are willing to forward: printable, no whitespace, a sane length. */
@@ -171,6 +175,7 @@ function classify(status: number, body: string, provider: string, key: string, r
     if (/temperature|max_tokens|max_completion_tokens|response_format|responseMimeType/i.test(detail)) {
       return new ProviderError('bad_request', `${provider} refused the request${said}`, status);
     }
+    if (/reasoning_effort/i.test(detail)) return new ProviderError('bad_request', `${provider} refused the request${said}`, status);
     if (/model/i.test(detail) && /not (?:found|exist|supported)|unknown|invalid/i.test(detail)) {
       return new ProviderError('model', `${provider} does not know that model${said}`, status);
     }
@@ -219,9 +224,10 @@ type FetchLike = typeof fetch;
  * newer models want `max_completion_tokens`. On a 400 naming one of these, the
  * call is repeated without it rather than failing the run.
  */
-interface Relax { temperature: boolean; json: boolean; completionTokens: boolean }
+interface Relax { temperature: boolean; json: boolean; completionTokens: boolean; effort: boolean }
 
 function relaxFor(message: string, r: Relax): Relax | null {
+  if (!r.effort && /reasoning_effort|reasoning effort/i.test(message)) return { ...r, effort: true };
   if (!r.temperature && /temperature/i.test(message)) return { ...r, temperature: true };
   if (!r.completionTokens && /max_tokens|max_completion_tokens/i.test(message)) return { ...r, completionTokens: true };
   if (!r.json && /response_format|json|responseMimeType|mime/i.test(message)) return { ...r, json: true };
@@ -287,32 +293,51 @@ function buildRequest(def: ProviderDef, key: string, model: string, req: ChatReq
         // Reasoning models spend completion tokens thinking before they answer.
         ...(completion ? { max_completion_tokens: reasoning ? Math.max(req.maxTokens, 8000) : req.maxTokens } : { max_tokens: req.maxTokens }),
         ...(req.temperature !== undefined && !r.temperature && !reasoning ? { temperature: req.temperature } : {}),
+        // A panel turn needs a considered answer, not a long deliberation: low effort keeps a run to minutes.
+        ...(reasoning && !r.effort ? { reasoning_effort: 'low' } : {}),
         ...(req.json && !r.json ? { response_format: { type: 'json_object' } } : {}),
       }),
     },
   };
 }
 
-function readResponse(def: ProviderDef, j: any): ChatResult {
+/* What each wire answers with, as far as this module reads it. Every field is optional: providers drift. */
+interface AnthropicReply { content?: { type?: string; text?: string }[]; usage?: { input_tokens?: number; output_tokens?: number } }
+interface GeminiReply {
+  candidates?: { content?: { parts?: { text?: string; thought?: boolean }[] }; finishReason?: string }[];
+  promptFeedback?: { blockReason?: string };
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
+}
+interface OpenAIReply {
+  choices?: { message?: { content?: string | (string | { text?: string })[] | null } }[];
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
+}
+interface ModelListing {
+  data?: { id?: string; name?: string; display_name?: string }[];
+  models?: { name?: string; displayName?: string; supportedGenerationMethods?: string[] }[];
+}
+
+function readResponse(def: ProviderDef, body: unknown): ChatResult {
   if (def.wire === 'anthropic') {
-    const text = Array.isArray(j?.content)
-      ? j.content.filter((c: any) => c?.type === 'text').map((c: any) => String(c.text ?? '')).join('')
-      : '';
+    const j = body as AnthropicReply;
+    const text = Array.isArray(j?.content) ? j.content.filter(c => c?.type === 'text').map(c => String(c.text ?? '')).join('') : '';
     return { text, input: num(j?.usage?.input_tokens), output: num(j?.usage?.output_tokens) };
   }
   if (def.wire === 'google') {
+    const j = body as GeminiReply;
     const cand = j?.candidates?.[0];
     const parts = Array.isArray(cand?.content?.parts) ? cand.content.parts : [];
-    const text = parts.filter((p: any) => !p?.thought).map((p: any) => String(p?.text ?? '')).join('');
+    const text = parts.filter(p => !p?.thought).map(p => String(p?.text ?? '')).join('');
     if (!text && (cand?.finishReason === 'SAFETY' || j?.promptFeedback?.blockReason)) {
       throw new ProviderError('bad_request', 'Gemini declined to answer (safety filter)');
     }
     return { text, input: num(j?.usageMetadata?.promptTokenCount), output: num(j?.usageMetadata?.candidatesTokenCount) };
   }
+  const j = body as OpenAIReply;
   const content = j?.choices?.[0]?.message?.content;
   const text = typeof content === 'string'
     ? content
-    : Array.isArray(content) ? content.map((c: any) => (typeof c === 'string' ? c : String(c?.text ?? ''))).join('') : '';
+    : Array.isArray(content) ? content.map(c => (typeof c === 'string' ? c : String(c?.text ?? ''))).join('') : '';
   return { text, input: num(j?.usage?.prompt_tokens), output: num(j?.usage?.completion_tokens) };
 }
 
@@ -324,7 +349,7 @@ const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
   signal?.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason); }, { once: true });
 });
 
-async function send(def: ProviderDef, key: string, url: string, init: RequestInit, req: ChatRequest, f: FetchLike): Promise<any> {
+async function send(def: ProviderDef, key: string, url: string, init: RequestInit, req: ChatRequest, f: FetchLike): Promise<unknown> {
   const timeout = AbortSignal.timeout(req.timeoutMs ?? 90_000);
   const signal = req.signal ? AbortSignal.any([req.signal, timeout]) : timeout;
   let res: Response;
@@ -352,7 +377,7 @@ export function createChat(provider: ProviderId, key: string, model: string, f: 
   const def = BY_ID.get(provider);
   if (!def) throw new ProviderError('bad_request', 'Unknown provider');
   if (def.wire === 'demo') return createDemoChat([300, 1400]);
-  let relax: Relax = { temperature: false, json: false, completionTokens: false };
+  let relax: Relax = { temperature: false, json: false, completionTokens: false, effort: false };
 
   return async function chat(req: ChatRequest): Promise<ChatResult> {
     let retried = false;
@@ -398,29 +423,29 @@ export async function listModels(provider: ProviderId, key: string, f: FetchLike
   const def = BY_ID.get(provider);
   if (!def) throw new ProviderError('bad_request', 'Unknown provider');
   if (def.wire === 'demo') return { models: [{ id: 'scripted', name: 'Scripted demo' }], listed: true };
-  const get = async (url: string, headers: Record<string, string>) => {
+  const get = async (url: string, headers: Record<string, string>): Promise<ModelListing> => {
     const req: ChatRequest = { system: '', user: '', json: false, maxTokens: 0, timeoutMs: 15_000 };
-    return send(def, key, url, { method: 'GET', headers }, req, f);
+    return (await send(def, key, url, { method: 'GET', headers }, req, f)) as ModelListing;
   };
 
   let models: ModelEntry[] = [];
   try {
     if (def.wire === 'anthropic') {
       const j = await get(`${def.base}/models?limit=100`, { 'x-api-key': key, 'anthropic-version': '2023-06-01' });
-      models = (j?.data ?? []).map((m: any) => ({ id: String(m.id), name: String(m.display_name || m.id) }));
+      models = (j?.data ?? []).map(m => ({ id: String(m.id), name: String(m.display_name || m.id) }));
     } else if (def.wire === 'google') {
       const j = await get(`${def.base}/models?pageSize=200`, { 'x-goog-api-key': key });
       models = (j?.models ?? [])
-        .filter((m: any) => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
-        .map((m: any) => ({ id: String(m.name).replace(/^models\//, ''), name: String(m.displayName || m.name) }));
+        .filter(m => Array.isArray(m.supportedGenerationMethods) && m.supportedGenerationMethods.includes('generateContent'))
+        .map(m => ({ id: String(m.name).replace(/^models\//, ''), name: String(m.displayName || m.name) }));
     } else if (def.id === 'openrouter') {
       // OpenRouter lists models without a key, so check the key on its own.
       await get(`${def.base}/key`, { authorization: `Bearer ${key}` });
       const j = await get(`${def.base}/models`, {});
-      models = (j?.data ?? []).map((m: any) => ({ id: String(m.id), name: String(m.name || m.id) }));
+      models = (j?.data ?? []).map(m => ({ id: String(m.id), name: String(m.name || m.id) }));
     } else {
       const j = await get(`${def.base}/models`, { authorization: `Bearer ${key}` });
-      models = (j?.data ?? []).map((m: any) => ({ id: String(m.id), name: String(m.id) }));
+      models = (j?.data ?? []).map(m => ({ id: String(m.id), name: String(m.id) }));
     }
   } catch (err) {
     // A provider without a listing endpoint: offer the known names. The key is checked on the first call.

@@ -53,10 +53,21 @@ interface Props {
   onFocus?: () => void;
 }
 
+/** The engine this browser last used, or OpenAI with its default model. */
+function initialEngine(): Engine {
+  const saved = loadEngine();
+  if (saved && PROVIDERS.some(p => p.id === saved.provider)) return saved;
+  return { provider: 'openai', model: providerInfo('openai').defaultModel, remember: false };
+}
+
 export default function OraclePanel({ oracle, onLocate, selected, onClose, embedded = false, focus = false, onFocus }: Props) {
-  const [engine, setEngine] = useState<Engine>(() => ({ provider: 'openai', model: providerInfo('openai').defaultModel, remember: false }));
-  const [key, setKey] = useState('');
-  const [engineOpen, setEngineOpen] = useState(false);
+  // Settings come from this browser's storage. The panel only renders once opened, on the client.
+  const [engine, setEngine] = useState<Engine>(initialEngine);
+  const [key, setKey] = useState(() => loadKey(initialEngine().provider));
+  const [engineOpen, setEngineOpen] = useState(() => {
+    const e = initialEngine();
+    return providerInfo(e.provider).needsKey && !loadKey(e.provider);
+  });
   /** Over a run the engine card starts folded: a visitor following a shared link has come to read, not to configure. */
   const [engineOpenInRun, setEngineOpenInRun] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -67,16 +78,6 @@ export default function OraclePanel({ oracle, onLocate, selected, onClose, embed
   const [depth, setDepth] = useState<Depth>('standard');
   const [useFeeds, setUseFeeds] = useState(true);
   const [starting, setStarting] = useState(false);
-
-  // Settings come from this browser only, after mount (no storage on the server render).
-  useEffect(() => {
-    const saved = loadEngine();
-    const valid = saved && PROVIDERS.some(p => p.id === saved.provider) ? saved : null;
-    if (valid) setEngine(valid);
-    const k = loadKey(valid?.provider ?? 'openai');
-    setKey(k);
-    if (!k && (valid ? providerInfo(valid.provider).needsKey : true)) setEngineOpen(true);
-  }, []);
 
   useEffect(() => {
     if (!fullscreen) return;
@@ -133,7 +134,7 @@ export default function OraclePanel({ oracle, onLocate, selected, onClose, embed
           </div>
           <div className={fullscreen ? 'min-h-0 overflow-y-auto styled-scrollbar pr-1 flex flex-col gap-3' : 'flex flex-col gap-3'}>
             <PanelList s={s} selected={selected} onLocate={onLocate} />
-            {s.agents.length > 0 && <AskPanel s={s} oracle={oracle} engine={engine} keyValue={key} ready={ready} selected={selected} />}
+            {s.agents.length > 0 && <AskPanel key={oracle.runId ?? ''} s={s} oracle={oracle} engine={engine} keyValue={key} ready={ready} selected={selected} />}
             <UsageLine s={s} />
           </div>
         </>
@@ -743,8 +744,12 @@ function AskPanel({ s, oracle, engine, keyValue, ready, selected }: { s: RunStat
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState<{ who: string; text: string; you: boolean }[]>([]);
-  useEffect(() => { if (selected?.startsWith('g:')) setTarget(selected.slice(2)); }, [selected]);
-  useEffect(() => { setLog([]); }, [oracle.runId]);
+  // A panelist clicked on the globe becomes the one you are talking to.
+  const [seen, setSeen] = useState(selected);
+  if (selected !== seen) {
+    setSeen(selected);
+    if (selected?.startsWith('g:')) setTarget(selected.slice(2));
+  }
   const targetName = target === 'report' ? 'Report agent' : s.agents.find(a => a.id === target)?.name ?? target;
   const send = async () => {
     const m = message.trim();
