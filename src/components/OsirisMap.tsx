@@ -7,6 +7,8 @@ import { installTerrainTileProtocol } from '@/lib/terrain-tiles';
 import { CLOUDS_ATTRIBUTION, CLOUDS_CREDIT, CLOUDS_LAYER, frameTime } from '@/lib/live-clouds';
 import { createCloudLayer } from '@/lib/live-clouds-layer';
 import { attachOi, type OiGlobe, type OiHover } from '@/lib/oi/globe';
+import { attachHighlights, type Highlighter } from '@/lib/oi/highlights';
+import type { Highlight } from '@/lib/oi/assist/tools';
 import { createSatelliteLayer, parseColor, SAT_MAX_ZOOM, type SatPoint } from '@/lib/satellite-layer';
 import { MAP_DEFAULTS, MAP_PALETTE_KEYS, readMapPalette, satColorFor, type MapPalette } from '@/lib/map-palette';
 import { STYLE_EVENT } from '@/lib/style-tokens';
@@ -99,6 +101,8 @@ interface OsirisMapProps {
   onOiHover?: (hover: OiHover | null) => void;
   /** OI's camera started or stopped following the run. */
   onOiFollow?: (following: boolean) => void;
+  /** What OI Assist has marked on the map: found things, named places, a searched area. */
+  oiHighlight?: Highlight | null;
 }
 
 function computeSolarTerminator(): [number, number][] {
@@ -176,7 +180,7 @@ interface AlertPinFeature {
   properties: AlertPinProps;
 }
 
-function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, onReady, flyToLocation, alertPinIds = null, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, theme = 'core', drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {}, onOiGlobe, onOiSelect, onOiHover, onOiFollow }: OsirisMapProps) {
+function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, onReady, flyToLocation, alertPinIds = null, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, theme = 'core', drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {}, onOiGlobe, onOiSelect, onOiHover, onOiFollow, oiHighlight = null }: OsirisMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -2734,6 +2738,21 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       globe.destroy();
     };
   }, [mapReady]);
+
+  // OI Assist's marks: attached once the map is up, fed whatever the assistant marks.
+  const highlighterRef = useRef<Highlighter | null>(null);
+  const oiHighlightRef = useRef(oiHighlight);
+  useEffect(() => {
+    if (!mapReady || !mapRef.current) return;
+    const h = attachHighlights(mapRef.current);
+    h.set(oiHighlightRef.current);
+    highlighterRef.current = h;
+    return () => { highlighterRef.current = null; h.destroy(); };
+  }, [mapReady]);
+  useEffect(() => {
+    oiHighlightRef.current = oiHighlight;
+    highlighterRef.current?.set(oiHighlight);
+  }, [oiHighlight]);
 
   // ── DRAWN POLYGONS ──
   useEffect(() => {

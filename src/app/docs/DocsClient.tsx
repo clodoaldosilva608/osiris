@@ -488,7 +488,16 @@ docker compose up -d`}</Pre>
 
           <Section id="oi" eyebrow="Guide" title="OI & MCP">
             <p>
-              OI is OSIRIS&apos;s prediction engine. Ask it a question and it builds a world model from the
+              OI is the AI in OSIRIS, on your own model key, and it works two ways. <strong>Assist</strong> is a
+              conversation (press <kbd>O</kbd>): ask in words, typed or spoken, and OI works the map for you. It flies
+              to the place you name, switches the layers on, searches what is live (flights, military aircraft, ships,
+              ports and chokepoints, earthquakes, fires, weather, disaster alerts, news, cameras, satellites), marks
+              what it finds in gold with the area it searched, and lists it in cards you can click through. It reads the
+              markets, opens panels, and starts forecasts. Each step shows what it did as it does it; choose Navigate,
+              Research or Forecast to steer it, or leave it on Auto.
+            </p>
+            <p>
+              <strong>Forecast</strong> is OSIRIS&apos;s prediction engine. Ask it a question and it builds a world model from the
               live feeds (the actors, where they are, how they relate), assembles a deliberately diverse panel of
               simulated forecasters, and lets them debate over several rounds: each one gives a view, replies to the
               others, and updates. A report agent then writes a calibrated forecast with its drivers, scenarios,

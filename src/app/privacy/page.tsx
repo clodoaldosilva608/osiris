@@ -14,7 +14,8 @@ export const metadata: Metadata = {
  *
  * Reviewed 2026-10-02 against: src/app/api/geo, src/app/api/osint/*,
  * src/app/api/ai/*, src/app/page.tsx, src/components/LiveAlerts.tsx,
- * src/components/DonBotScan.tsx, src/lib/live-clouds.ts, src/lib/oi/*.
+ * src/components/DonBotScan.tsx, src/lib/live-clouds.ts, src/lib/oi/*,
+ * src/app/api/geosearch, src/components/oi/assist/voice.ts.
  */
 
 const SERVICES: { service: string; sent: string; when: string }[] = [
@@ -29,7 +30,9 @@ const SERVICES: { service: string; sent: string; when: string }[] = [
   { service: 'Telegram (cdn*.telesco.pe)', sent: 'Your IP address, as with any image request', when: 'When you expand a Live Alert that has a photo or video preview' },
   { service: 'NOAA nowCOAST (nowcoast.noaa.gov)', sent: 'Your IP address and the part of the map in view, as with any map tile', when: 'Only while the Live Clouds layer is switched on' },
   { service: 'DigitalDon (widget.digitaldon.net)', sent: 'The token you search, and your IP address, as with any page you open. No referrer or site name is sent', when: 'Only when you run a DonBot token scan, in Markets → Crypto or RECON → DonBot. Its page runs sealed in its own frame, and counts its own usage there' },
-  { service: 'The AI provider you choose for OI (OpenAI, Anthropic, Google, OpenRouter, Groq, DeepSeek, xAI, Mistral or Alibaba Cloud)', sent: 'Your API key, your question and any material you add, with the OSIRIS headlines picked for it. Sent from the OSIRIS server, not your browser, so the provider sees our address, not yours', when: 'Only when you run an OI forecast, check a key, or question the panel, on the key you supplied' },
+  { service: 'The AI provider you choose for OI (OpenAI, Anthropic, Google, OpenRouter, Groq, DeepSeek, xAI, Mistral or Alibaba Cloud)', sent: 'Your API key; for a forecast, your question and any material you add, with the OSIRIS headlines picked for it; for OI Assist, the conversation, where the map is looking, which layers are on, and what OI found on the map for you. Sent from the OSIRIS server, not your browser, so the provider sees our address, not yours', when: 'Only when you run an OI forecast, talk to OI Assist, check a key, or question the panel, on the key you supplied' },
+  { service: 'photon.komoot.io, nominatim.openstreetmap.org', sent: 'The place name searched. Sent from the OSIRIS server, not your browser', when: 'When you search for a place, or OI Assist looks one up to take you there' },
+  { service: 'Your browser\u2019s speech recognition (in Chrome and Edge, a Google or Microsoft service)', sent: 'Your voice, while the microphone is on. OSIRIS never receives the audio, only the words it becomes, which you then send to OI', when: 'Only when you press the microphone in OI Assist. Firefox has no speech recognition, so the button does not show there' },
 ];
 
 export default function PrivacyPage() {
@@ -117,6 +120,13 @@ export default function PrivacyPage() {
             logged or shown back. A run itself is not private: anyone with its link can watch it,
             and it is kept in memory for three hours after it ends. Its forecast is a simulation by
             language models, not a prediction anyone stands behind.
+          </p>
+          <p className="mt-3 text-sm leading-relaxed text-[var(--text-muted)]">
+            OI Assist keeps the conversation in your browser tab, and only for as long as the tab is
+            open. Each time it thinks, the conversation so far goes to OSIRIS and on to your provider;
+            the server does not keep it. What OI does on the map (where it flies, which layers it
+            switches, what it marks) happens in your browser. Replies read aloud use your
+            browser&apos;s own voice, on your device.
           </p>
         </section>
 

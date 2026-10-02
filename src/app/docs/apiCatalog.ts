@@ -595,9 +595,9 @@ export const API_GROUPS: ApiGroup[] = [
   },
   {
     id: 'oi',
-    title: 'OI (Prediction)',
+    title: 'OI (Assist & Prediction)',
     blurb:
-      'Swarm-intelligence forecasting on live OSIRIS intelligence: a simulated panel of AI forecasters debates a question over rounds, and a report agent writes a calibrated forecast. Runs on your own model key, sent in headers and never stored. Also served as an MCP server at /api/mcp; see OI guide.',
+      'OI Assist, a model on your own key that works the map in conversation, and swarm-intelligence forecasting on live OSIRIS intelligence: a simulated panel of AI forecasters debates a question over rounds, and a report agent writes a calibrated forecast. Your model key is sent in headers and never stored. Also served as an MCP server at /api/mcp; see OI guide.',
     endpoints: [
       {
         path: '/api/oi',
@@ -648,6 +648,19 @@ export const API_GROUPS: ApiGroup[] = [
         summary: 'The run as it happens, over Server-Sent Events: phases, actors and relations, panelists, every post and reply, round statistics, injected events and the report.',
         returns: ['…SSE event stream'],
         notes: 'Each event is `id: <seq>` and `data: <json>`, with a `t` field naming its type. The stream replays from the start, follows live, and closes after `end`. Reconnect with `Last-Event-ID` (or `?after=<seq>`) to resume.',
+      },
+      {
+        path: '/api/oi/assist',
+        method: 'POST',
+        summary: "One step of an OI Assist conversation: send the conversation and what is on the map; get back what OI says and the actions it wants taken (go_to, layers, find, highlight, show, markets, open, map_view, forecast, clear).",
+        returns: ['step.say', 'step.actions', 'step.done', 'usage'],
+        headers: { 'X-OI-Provider': 'openai', 'X-OI-Key': '$YOUR_MODEL_KEY' },
+        requiresAuth: true,
+        notes: 'Stateless: the conversation lives with the caller. Carry out the actions, and while `done` is false send their results back as a `tool` message for the next step. 40 steps per minute per address.',
+        bodyExample: `{
+  "messages": [{ "role": "user", "text": "Military aircraft near Frankfurt", "mode": "research" }],
+  "context": { "view": { "lat": 50.1, "lng": 8.7, "zoom": 6 }, "layersOn": ["military"], "loaded": { "military_flights": 104 } }
+}`,
       },
       {
         path: '/api/oi/runs/{id}/ask',

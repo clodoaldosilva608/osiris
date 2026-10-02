@@ -44,6 +44,10 @@ import { STORAGE_KEY, serializeShapes, deserializeShapes, shapesToGeoJSON, downl
 const TokenPanel = dynamic(() => import('@/components/TokenPanel'));
 import SupportMenu from '@/components/SupportMenu';
 import { useOi } from '@/lib/oi/client';
+import { useAssist } from '@/lib/oi/assist/client';
+import type { Highlight, Site } from '@/lib/oi/assist/tools';
+import { currentAnswer } from '@/lib/oi/state';
+import type { OiMode } from '@/components/OiPanel';
 import { workspaceInsets } from '@/lib/oi/layout';
 import type { OiGlobe, OiHover } from '@/lib/oi/globe';
 function useIsMobile() {
@@ -339,6 +343,10 @@ export default function Dashboard() {
   const [oiHover, setOiHover] = useState<OiHover | null>(null);
   const [oiFollowing, setOiFollowing] = useState(true);
   const [oiTheater, setOiTheater] = useState(false);
+  /** Assist (talk to OI) or Forecast (the swarm). */
+  const [oiMode, setOiMode] = useState<OiMode>('assist');
+  /** Whether the panel was opened from the keyboard, to type straight away. */
+  const [oiAutoFocus, setOiAutoFocus] = useState(false);
   // A different run (or none) starts with nothing selected.
   const [oiSelectionRun, setOiSelectionRun] = useState(oi.runId);
   if (oiSelectionRun !== oi.runId) {
@@ -365,6 +373,7 @@ export default function Dashboard() {
   const handleOiSelect = useCallback((key: string | null) => {
     setOiSelected(key);
     if (!key) return;
+    setOiMode('forecast');
     if (window.matchMedia('(max-width: 767px)').matches) setMobilePanel('oi');
     else setShowOi(true);
   }, []);
@@ -376,8 +385,8 @@ export default function Dashboard() {
   const followOi = useCallback(() => oiGlobe.current?.follow(true), []);
   // Full screen: the workspace's columns sit either side, and the globe stays centred on the stage between.
   const oiTheaterOn = oiTheater && Boolean(oi.state);
-  // On a phone the drawer covers the lower half: the globe centres in the space above it.
-  const oiDrawerOpen = mobilePanel === 'oi' && Boolean(oi.state);
+  // On a phone the drawer covers the lower half: the globe, and anywhere OI flies to, centre in the space above it.
+  const oiDrawerOpen = mobilePanel === 'oi';
   useEffect(() => {
     if (!oiDrawerOpen) return;
     const drawer = Math.round(Math.min(window.innerHeight * 0.55, window.innerHeight - 100)) + 52;
@@ -401,6 +410,7 @@ export default function Dashboard() {
     const id = new URLSearchParams(window.location.search).get('oi');
     if (!id) return;
     autoLocateCancelled.current = true;
+    setOiMode('forecast');
     if (window.matchMedia('(max-width: 767px)').matches) setMobilePanel('oi');
     else setShowOi(true);
     void oi.watch(id);
@@ -484,6 +494,88 @@ export default function Dashboard() {
     cf_outages: false,
     cf_attacks: false,
   });
+  // ── OI ASSIST ── the conversation, and the page it works: the camera, the
+  // layers, the panels, the live data, and what it marks on the map. It lives
+  // here, so closing the panel keeps the conversation and its marks.
+  const [oiHighlight, setOiHighlight] = useState<Highlight | null>(null);
+  const [oiVoice, setOiVoice] = useState(() => typeof window !== 'undefined' && localStorage.getItem('osiris.oi.voice') === '1');
+  const setOiVoicePersist = useCallback((on: boolean) => {
+    setOiVoice(on);
+    try { localStorage.setItem('osiris.oi.voice', on ? '1' : '0'); } catch { /* storage blocked */ }
+    if (!on && typeof window !== 'undefined') window.speechSynthesis?.cancel();
+  }, []);
+  const assistView = useRef<{ lat: number; lng: number; zoom: number; projection: 'globe' | 'mercator'; style: string }>({ lat: 20, lng: 0, zoom: 2.5, projection: 'globe', style: 'dark' });
+  const assistLayers = useRef<Record<string, boolean>>(activeLayers);
+  const assistVoice = useRef(oiVoice);
+  const assistOi = useRef(oi);
+  useEffect(() => { assistLayers.current = activeLayers; }, [activeLayers]);
+  useEffect(() => { assistVoice.current = oiVoice; }, [oiVoice]);
+  useEffect(() => { assistOi.current = oi; });
+  useEffect(() => {
+    assistView.current = { lat: mapCenter?.lat ?? 20, lng: mapCenter?.lng ?? 0, zoom: mapView.zoom, projection: mapProjection, style: mapStyle };
+  }, [mapCenter, mapView.zoom, mapProjection, mapStyle]);
+  /** A panel the assistant asked for, opened the way its own button opens it. */
+  const openFromAssist = useCallback((panel: string) => {
+    const phone = window.matchMedia('(max-width: 767px)').matches;
+    const right = (show: () => void) => { setShowOi(false); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowSpaceCam(false); show(); };
+    if (panel === 'markets') { if (phone) setMobilePanel('markets'); else right(() => setShowMarkets(true)); }
+    else if (panel === 'alerts') right(() => setShowAlerts(true));
+    else if (panel === 'intel') { if (phone) setMobilePanel('recon'); else right(() => setShowIntel(true)); }
+    else if (panel === 'layers') { if (phone) setMobilePanel('layers'); else setShowLayers(true); }
+    else if (panel === 'directions') setShowDirections(true);
+    else if (panel === 'forecast' || panel === 'workspace') {
+      setOiMode('forecast');
+      if (phone) setMobilePanel('oi'); else setShowOi(true);
+      if (panel === 'workspace' && assistOi.current.state && !phone) setOiTheater(true);
+    }
+  }, []);
+  const assistSite = useMemo<Omit<Site, 'forecast'>>(() => ({
+    data: () => dataRef.current,
+    view: () => assistView.current,
+    layers: () => assistLayers.current,
+    flyTo: (lat, lng, zoom) => { oiGlobe.current?.follow(false); setFlyToLocation({ lat, lng, zoom, ts: Date.now() }); },
+    setLayers: (on, off) => setActiveLayers(prev => {
+      const next = { ...prev } as Record<string, boolean>;
+      for (const k of on) if (k in next) next[k] = true;
+      for (const k of off) if (k in next) next[k] = false;
+      return next as typeof prev;
+    }),
+    highlight: h => setOiHighlight(h),
+    openPanel: openFromAssist,
+    setView: ({ projection, style }) => {
+      if (projection) {
+        if (projection === 'mercator') setActiveLayers(prev => ({ ...prev, terrain_elevation: false, terrain_3d: false }));
+        setMapProjection(projection);
+      }
+      if (style) setMapStyle(style);
+    },
+    geocode: async q => {
+      try {
+        const res = await fetch(`/api/geosearch?q=${encodeURIComponent(q)}`);
+        const hit = (await res.json())?.results?.[0];
+        return hit && Number.isFinite(hit.lat) && Number.isFinite(hit.lng) ? { name: hit.name, lat: hit.lat, lng: hit.lng, kind: hit.kind } : null;
+      } catch { return null; }
+    },
+  }), [openFromAssist]);
+  const assist = useAssist({
+    site: assistSite,
+    startForecast: async (question, depth, auth) => {
+      const id = await assistOi.current.start({ question, seed: '', depth, useFeeds: true }, auth.engine, auth.key);
+      return id ? { ok: true, id } : { ok: false, error: 'The forecast did not start: check the key and try again.' };
+    },
+    forecastSummary: () => {
+      const st = assistOi.current.state;
+      return st ? { question: st.question, status: st.status === 'running' ? st.phaseLabel || 'running' : st.status, answer: currentAnswer(st) } : null;
+    },
+    onReply: text => {
+      if (!assistVoice.current || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text.replace(/^- /gm, '').replace(/\s+/g, ' ').trim());
+      u.rate = 1.03;
+      window.speechSynthesis.speak(u);
+    },
+  });
+
   // Server-side capability flags — gate layers that need credentials.
   const selectFlatMap = () => {
     setActiveLayers(prev => ({ ...prev, terrain_elevation: false, terrain_3d: false }));
@@ -663,6 +755,12 @@ export default function Dashboard() {
       if (e.key === 'f' && !e.ctrlKey) {
         if (document.fullscreenElement) document.exitFullscreen();
         else document.documentElement.requestFullscreen();
+      }
+      if (e.key === 'o' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        setOiMode('assist');
+        setOiAutoFocus(true);
+        if (window.matchMedia('(max-width: 767px)').matches) setMobilePanel('oi');
+        else { setShowOi(true); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowSpaceCam(false); }
       }
       if (e.key === 'l') setShowLayers(p => !p);
       if (e.key === 'm') setShowMarkets(p => !p);
@@ -1446,6 +1544,7 @@ export default function Dashboard() {
           onOiSelect={handleOiSelect}
           onOiHover={setOiHover}
           onOiFollow={setOiFollowing}
+          oiHighlight={oiHighlight}
         />
       </ErrorBoundary>
 
@@ -1637,7 +1736,7 @@ export default function Dashboard() {
       {/* ── RIGHT TOOL STRIP (desktop only — mobile uses bottom nav) ── */}
       {!isMobile && <motion.div data-hud initial={{ opacity: 0, x: 12 }} animate={revealed ? { opacity: 1, x: 0 } : { opacity: 0, x: 12 }} transition={hudIn(0.3)} className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-[250] pointer-events-auto bg-black/40 backdrop-blur-sm p-1 rounded-full border border-white/5">
         <div ref={oiAnchor} className="relative group">
-          <button onClick={() => { setShowOi(!showOi); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowSpaceCam(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showOi ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`} title="OI — swarm forecasting on live intelligence, with your own AI key" aria-label="OI" aria-expanded={showOi}>
+          <button onClick={() => { setShowOi(!showOi); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowSpaceCam(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showOi ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`} title="OI — ask anything and it works the map for you, or run a forecast, on your own AI key (O)" aria-label="OI" aria-expanded={showOi}>
             <Orbit className={`w-4 h-4 ${showOi ? 'text-[var(--gold-primary)]' : 'text-white/60'}`} />
             {showOi && (
               <span
@@ -1651,9 +1750,10 @@ export default function Dashboard() {
           <AnimatePresence>
             {showOi && (
               <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-12 w-[412px]" style={{ top: oiTop }}>
-                <OiPanel oi={oi} selected={oiSelected} onSelect={setOiSelected} onClose={() => { setShowOi(false); setOiTheater(false); }}
+                <OiPanel oi={oi} selected={oiSelected} onSelect={setOiSelected} onClose={() => { setShowOi(false); setOiTheater(false); setOiAutoFocus(false); }}
                   focus={oiFocus} onFocus={toggleOiFocus} onLocate={handleOiLocate}
-                  theater={oiTheater} onTheater={setOiTheater} following={oiFollowing} onFollow={followOi} />
+                  theater={oiTheater} onTheater={setOiTheater} following={oiFollowing} onFollow={followOi}
+                  assist={assist} mode={oiMode} onMode={setOiMode} speakOn={oiVoice} onSpeak={setOiVoicePersist} autoFocus={oiAutoFocus} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -2041,7 +2141,8 @@ export default function Dashboard() {
                   {mobilePanel === 'markets' && <MarketsPanel data={data} spaceWeather={spaceWeather} />}
                   {mobilePanel === 'oi' && (
                     <OiPanel oi={oi} selected={oiSelected} onSelect={setOiSelected} embedded focus={oiFocus} onFocus={toggleOiFocus}
-                      onLocate={handleOiLocate} following={oiFollowing} onFollow={followOi} />
+                      onLocate={handleOiLocate} following={oiFollowing} onFollow={followOi}
+                      assist={assist} mode={oiMode} onMode={setOiMode} speakOn={oiVoice} onSpeak={setOiVoicePersist} />
                   )}
                   {mobilePanel === 'intel' && <IntelFeed data={data} onLocate={(lat, lng) => { setFlyToLocation({ lat, lng, ts: Date.now() }); setMobilePanel(null); }} />}
                   {mobilePanel === 'search' && (

@@ -103,14 +103,16 @@ function setUrlRun(id: string | null) {
   } catch { /* not in a browser */ }
 }
 
-const headersFor = (engine: Engine, key: string): Record<string, string> => ({
+/** The headers that carry an engine and key on every OI request. */
+export const headersFor = (engine: Engine, key: string): Record<string, string> => ({
   'content-type': 'application/json',
   'x-oi-provider': engine.provider,
   'x-oi-model': engine.model,
   ...(key ? { 'x-oi-key': key } : {}),
 });
 
-async function errorOf(res: Response): Promise<string> {
+/** What went wrong, in OI's words if it gave any. */
+export async function errorOf(res: Response): Promise<string> {
   const body = await res.json().catch(() => null);
   return (body && typeof body.error === 'string' ? body.error : '') || `OI answered ${res.status}.`;
 }

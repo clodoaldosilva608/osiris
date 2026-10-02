@@ -6,6 +6,8 @@
  * It is offered as a provider only outside production (see providers.ts).
  */
 import type { ChatFn, ChatRequest } from './providers';
+import { demoAssist } from './assist/demo';
+import { ASSIST_SYSTEM_START } from './assist/protocol';
 
 const ACTORS = [
   { id: 'usa', name: 'United States', kind: 'state', country: 'US', place: 'Washington', lat: 38.9, lng: -77.04, lean: 0.3 },
@@ -69,6 +71,8 @@ const figure = (u: string, label: string) => {
 };
 
 function answer(req: ChatRequest): string {
+  // OI Assist has its own script: the conversation, not the forecast pipeline.
+  if (req.system.startsWith(ASSIST_SYSTEM_START)) return demoAssist(req.user);
   const u = req.user;
   if (u.includes('Build the world model')) {
     const cites = [...u.matchAll(/^\[(c\d+)\]/gm)].map(m => m[1]).slice(0, 5);
