@@ -639,8 +639,8 @@ export const API_GROUPS: ApiGroup[] = [
           { name: 'wait', desc: 'Seconds (up to 55) to wait for the run to finish before answering.', example: '30' },
           { name: 'view', desc: '`full` returns every event so far, to rebuild the whole run.', example: 'full' },
         ],
-        returns: ['id', 'status', 'phase', 'probability_pct', 'proposition', 'rounds', 'report', 'actors', 'panel', 'usage', 'watch_url'],
-        notes: 'Anyone with the id can read a run: that is how a forecast is shared. Runs are kept for three hours after they finish.',
+        returns: ['id', 'status', 'phase', 'kind', 'answer', 'probability_pct', 'outcomes', 'unit', 'proposition', 'rounds', 'report', 'actors', 'panel', 'usage', 'watch_url'],
+        notes: '`kind` is `binary` (a probability of YES), `choice` (a share for each of `outcomes`) or `number` (an `estimate` with an 80% `low`–`high` range, in `unit`); `answer` says it in words either way. Anyone with the id can read a run: that is how a forecast is shared. Runs are kept for three hours after they finish.',
       },
       {
         path: '/api/oai/runs/{id}/events',

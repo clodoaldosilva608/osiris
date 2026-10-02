@@ -490,10 +490,13 @@ docker compose up -d`}</Pre>
             <p>
               OAI is OSIRIS&apos;s prediction engine. Ask it a question and it builds a world model from the
               live feeds (the actors, where they are, how they relate), assembles a deliberately diverse panel of
-              simulated forecasters, and lets them debate over several rounds: each one posts a probability, replies to
-              the others, and updates. A report agent then writes a calibrated forecast with its drivers, scenarios,
-              signposts to watch and the strongest dissent. While it thinks, the analysis draws itself on the globe as
-              purple arcs, and you can inject an event mid-run from a god&apos;s-eye view or question any panelist after.
+              simulated forecasters, and lets them debate over several rounds: each one gives a view, replies to the
+              others, and updates. A report agent then writes a calibrated forecast with its drivers, scenarios,
+              signposts to watch and the strongest dissent. The answer takes the shape the question asks for: a
+              probability for a yes-or-no question, a share for each outcome when it asks which of several will happen,
+              and an estimate with an 80% range when it asks how much. While it thinks, the analysis draws itself on the
+              globe as arcs through the sky; every arc and point can be clicked to open exactly that piece of the
+              research, and the camera follows the run until you take it.
             </p>
             <div className="grid sm:grid-cols-2 gap-2.5">
               {[
@@ -501,6 +504,8 @@ docker compose up -d`}</Pre>
                 { k: 'Cost', v: 'Quick: 6 agents × 2 rounds, about 15 model calls. Standard: 10 × 3, about 33. Deep: 16 × 4, about 67. Billed by your provider at its own rates.' },
                 { k: 'Sharing', v: 'Every run has a link, /?oai=<id>, that replays the whole analysis on the globe for anyone who opens it. Runs are kept for three hours after they finish.' },
                 { k: 'Steering', v: 'Whoever started a run holds its token: they alone can inject events into it or stop it. Anyone with a key can question the panel.' },
+                { k: 'On the globe', v: 'Solid arcs are alignments and agreements, dashed are rivalries and disputes, dotted are evidence from the feeds, moving dashes are a panelist weighing an actor. Their colour is yours to set in the Style Studio (Map layers → OAI). Full screen keeps the globe live between the report and the debate.' },
+                { k: 'Answers', v: 'Every run says what kind it is (binary, choice or number) and gives its answer in words, e.g. "62% YES", "Hold (55%)" or "86.4 USD per barrel (80–92)", alongside the figures.' },
               ].map(row => (
                 <div key={row.k} className="rounded-xl border border-white/[0.07] bg-white/[0.015] p-3.5">
                   <div className="font-mono text-[11.5px] text-[#B388FF] mb-1.5">{row.k}</div>

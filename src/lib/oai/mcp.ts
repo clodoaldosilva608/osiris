@@ -45,7 +45,7 @@ export interface JsonRpcResponse {
 export const ERR = { parse: -32700, invalidRequest: -32600, methodNotFound: -32601, invalidParams: -32602, internal: -32603 };
 
 const INSTRUCTIONS = `OSIRIS OAI forecasts real-world questions with a simulated panel of AI agents grounded in OSIRIS's live intelligence feeds (news, conflict, quakes, markets).
-Use oai_predict to forecast a question; it returns the probability, drivers, scenarios and signposts, and a watch_url where a human can watch the analysis draw itself on the globe. A run takes one to five minutes: if oai_predict returns before the run is done, call oai_get_run with wait_seconds until status is "done".
+Use oai_predict to forecast a question; it returns the answer in the shape the question asks for (a probability for yes or no, a share per outcome for "which", an estimate with an 80% range for "how much"), with drivers, scenarios and signposts, and a watch_url where a human can watch the analysis draw itself on the globe. A run takes one to five minutes: if oai_predict returns before the run is done, call oai_get_run with wait_seconds until status is "done".
 oai_ask questions the report agent or any panelist afterwards. oai_inject drops a breaking event into a running simulation (god's-eye view).
 osiris_world_brief and osiris_markets are free and need no model key. OAI tools run on the model key configured on this connection.
 ${CREDIT}`;
@@ -56,7 +56,7 @@ export const TOOLS = [
   {
     name: 'oai_predict',
     title: 'Forecast a question',
-    description: 'Start an OSIRIS OAI forecast: a simulated panel of AI forecasters debates the question over several rounds, grounded in live OSIRIS intelligence, and a report agent writes a calibrated probability with drivers, scenarios and signposts. Waits for the result up to wait_seconds, else returns the run id to poll with oai_get_run. Uses the model key configured on this connection.',
+    description: 'Start an OSIRIS OAI forecast: a simulated panel of AI forecasters debates the question over several rounds, grounded in live OSIRIS intelligence, and a report agent writes a calibrated answer (a probability, a share per outcome, or an estimate with a range, as the question asks) with drivers, scenarios and signposts. Waits for the result up to wait_seconds, else returns the run id to poll with oai_get_run. Uses the model key configured on this connection.',
     inputSchema: {
       type: 'object',
       properties: {

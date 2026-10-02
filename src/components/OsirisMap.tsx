@@ -2711,7 +2711,7 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
   }, [mapReady, activeLayers.live_clouds, mapStyle]);
 
   // OSIRIS OAI — a forecast's analysis drawn as it happens: actors, panelists
-  // and purple arcs through the sky (see lib/oai/globe). The page feeds it
+  // and arcs through the sky (see lib/oai/globe). The page feeds it
   // run state directly, so the map does not re-render on every event; the
   // layer re-adds itself after a style change.
   useEffect(() => {
