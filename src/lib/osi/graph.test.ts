@@ -121,3 +121,32 @@ describe('drawing it', () => {
     expect(edgePath({ x: 100, y: 0 }, { x: 0, y: 0 }, 0.2).my).toBe(-10);
   });
 });
+
+describe('filtering and flowing it', () => {
+  it('leaves off kinds of node and link, or everything but an isolated few', () => {
+    const noAgents = buildGraph(s, { hideNodes: new Set(['agent']) });
+    expect(noAgents.nodes.some(n => n.kind === 'agent')).toBe(false);
+    expect(noAgents.edges.some(e => e.kind === 'reply' || e.kind === 'focus')).toBe(false);
+    const noRelations = buildGraph(s, { hideEdges: new Set(['relation']) });
+    expect(noRelations.nodes).toHaveLength(6);
+    expect(noRelations.edges.some(e => e.kind === 'relation')).toBe(false);
+    const only = buildGraph(s, { only: new Set(['a:cn', 'c:c1']) });
+    expect(only.nodes.map(n => n.key).sort()).toEqual(['a:cn', 'c:c1']);
+    expect(only.edges.map(e => e.id)).toEqual(['ev:c1:cn:0']);
+    expect(buildGraph(s).nodes.find(n => n.key === 'a:cn')?.subtype).toBe('state');
+  });
+
+  it('lines sources, then the world, then the panel up left to right in the flow layout', () => {
+    const g = buildGraph(s);
+    const layout = createLayout();
+    layout.setMode('flow');
+    layout.sync(g);
+    for (let i = 0; i < 600 && layout.step(g); i++);
+    const meanX = (kind: string) => {
+      const xs = g.nodes.filter(n => n.kind === kind).map(n => layout.bodies.get(n.key)!.x);
+      return xs.reduce((a, b) => a + b, 0) / xs.length;
+    };
+    expect(meanX('evidence')).toBeLessThan(meanX('actor'));
+    expect(meanX('actor')).toBeLessThan(meanX('agent'));
+  });
+});

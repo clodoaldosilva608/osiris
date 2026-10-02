@@ -44,6 +44,7 @@ import { STORAGE_KEY, serializeShapes, deserializeShapes, shapesToGeoJSON, downl
 const TokenPanel = dynamic(() => import('@/components/TokenPanel'));
 import SupportMenu from '@/components/SupportMenu';
 import { useOsi } from '@/lib/osi/client';
+import { workspaceInsets } from '@/lib/osi/layout';
 import type { OsiGlobe, OsiHover } from '@/lib/osi/globe';
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false);
@@ -373,7 +374,7 @@ export default function Dashboard() {
     setFlyToLocation({ lat, lng, zoom, ts: Date.now() });
   }, []);
   const followOsi = useCallback(() => osiGlobe.current?.follow(true), []);
-  // Full screen: the theatre's panels sit either side, and the globe stays centred in the space between.
+  // Full screen: the workspace's columns sit either side, and the globe stays centred on the stage between.
   const osiTheaterOn = osiTheater && Boolean(osi.state);
   // On a phone the drawer covers the lower half: the globe centres in the space above it.
   const osiDrawerOpen = mobilePanel === 'osi' && Boolean(osi.state);
@@ -384,10 +385,15 @@ export default function Dashboard() {
     return () => osiGlobe.current?.setInsets(null);
   }, [osiDrawerOpen]);
   useEffect(() => {
-    osiGlobe.current?.setInsets(osiTheaterOn ? { top: 76, bottom: 24, left: 384, right: 424 } : null);
-    // The app's own HUD (everything marked data-hud) steps back while the theatre has the screen.
+    const inset = () => osiGlobe.current?.setInsets(osiTheaterOn ? workspaceInsets(window.innerWidth) : null);
+    inset();
+    // The app's own HUD (everything marked data-hud) steps back while the workspace has the screen.
     document.documentElement.toggleAttribute('data-osi-theater', osiTheaterOn);
-    return () => document.documentElement.removeAttribute('data-osi-theater');
+    if (osiTheaterOn) window.addEventListener('resize', inset);
+    return () => {
+      window.removeEventListener('resize', inset);
+      document.documentElement.removeAttribute('data-osi-theater');
+    };
   }, [osiTheaterOn]);
   // A shared link (?osi=<run>) opens the panel on that run, and the camera
   // goes to the run rather than to the visitor's city.

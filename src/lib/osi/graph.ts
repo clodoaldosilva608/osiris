@@ -11,7 +11,7 @@
  * The layout starts from the map (a node is seeded where it sits on an
  * equirectangular world), so the graph's first frame reads like the globe it
  * came from before the forces untangle it. Everything here is pure and
- * client-safe; OsiGraph draws it.
+ * client-safe; the workspace's GraphView draws it.
  */
 import type { RunState } from './state';
 import type { LinkKind, Tone } from './types';
@@ -22,6 +22,8 @@ export interface GraphNode {
   /** The research key: `a:`, `g:` or `c:` and the id. */
   key: string;
   kind: GraphNodeKind;
+  /** The actor's kind or the source's (state, company, news, quake…): what its icon is drawn from. */
+  subtype: string;
   label: string;
   /** How many edges touch it: bigger hubs draw bigger. */
   degree: number;
@@ -50,21 +52,32 @@ export interface Graph {
   edges: GraphEdge[];
 }
 
+export interface GraphFilter {
+  /** Kinds of node left off. */
+  hideNodes?: ReadonlySet<GraphNodeKind>;
+  /** Kinds of link left off. */
+  hideEdges?: ReadonlySet<LinkKind>;
+  /** If given, only these nodes (an isolated selection and its neighbours). */
+  only?: ReadonlySet<string> | null;
+}
+
 /** The run as nodes and edges. Evidence that nothing cites stays off the graph: it would only drift. */
-export function buildGraph(s: RunState): Graph {
+export function buildGraph(s: RunState, filter: GraphFilter = {}): Graph {
   const nodes = new Map<string, GraphNode>();
-  const add = (key: string, kind: GraphNodeKind, label: string, lat: number | null, lng: number | null) =>
-    nodes.set(key, { key, kind, label, degree: 0, radius: 0, lat, lng });
-  for (const a of s.actors) add(`a:${a.id}`, 'actor', a.name, a.lat, a.lng);
-  for (const a of s.agents) add(`g:${a.id}`, 'agent', a.name, a.lat, a.lng);
+  const add = (key: string, kind: GraphNodeKind, subtype: string, label: string, lat: number | null, lng: number | null) => {
+    if (filter.hideNodes?.has(kind) || (filter.only && !filter.only.has(key))) return;
+    nodes.set(key, { key, kind, subtype, label, degree: 0, radius: 0, lat, lng });
+  };
+  for (const a of s.actors) add(`a:${a.id}`, 'actor', a.kind, a.name, a.lat, a.lng);
+  for (const a of s.agents) add(`g:${a.id}`, 'agent', 'panelist', a.name, a.lat, a.lng);
   const cited = new Set(s.links.filter(l => l.from.startsWith('c:') || l.to.startsWith('c:')).flatMap(l => [l.from, l.to]));
-  for (const c of s.context) if (cited.has(`c:${c.id}`)) add(`c:${c.id}`, 'evidence', c.title, c.lat, c.lng);
+  for (const c of s.context) if (cited.has(`c:${c.id}`)) add(`c:${c.id}`, 'evidence', c.kind, c.title, c.lat, c.lng);
 
   const edges: GraphEdge[] = [];
   const perPair = new Map<string, number>();
   for (const l of s.links) {
     const a = nodes.get(l.from), b = nodes.get(l.to);
-    if (!a || !b || a === b) continue;
+    if (!a || !b || a === b || filter.hideEdges?.has(l.kind)) continue;
     a.degree++;
     b.degree++;
     const pair = [l.from, l.to].sort().join('|');
@@ -78,10 +91,11 @@ export function buildGraph(s: RunState): Graph {
   return { nodes: [...nodes.values()], edges };
 }
 
+/** Big enough to carry the node's icon; hubs a little bigger. */
 function radiusOf(n: GraphNode): number {
-  if (n.kind === 'actor') return 8 + Math.min(7, n.degree * 0.7);
-  if (n.kind === 'agent') return 6.5 + Math.min(3, n.degree * 0.25);
-  return 4;
+  if (n.kind === 'actor') return 12 + Math.min(6, n.degree * 0.5);
+  if (n.kind === 'agent') return 11;
+  return 8.5;
 }
 
 /* ───────────────────────── Layout ───────────────────────── */
@@ -96,8 +110,17 @@ export interface Body {
   fy: number | null;
 }
 
+/** Force: the network finds its own shape. Flow: sources, then the world, then the panel, left to right. */
+export type LayoutMode = 'force' | 'flow';
+
+/** Where each kind of node settles across in the flow layout. */
+export const FLOW_X: Record<GraphNodeKind, number> = { evidence: -260, actor: 0, agent: 260 };
+
 export interface Layout {
   bodies: Map<string, Body>;
+  readonly mode: LayoutMode;
+  /** Switches layout, and warms up so the graph moves into it. */
+  setMode(m: LayoutMode): void;
   /** Heat: 1 when things are moving, decaying toward 0 as the graph settles. */
   alpha: number;
   /** Takes in a new graph: new nodes are seeded, gone ones dropped, and the layout warms up again. */
@@ -135,11 +158,14 @@ const CHARGE: Record<GraphNodeKind, number> = { actor: -620, agent: -420, eviden
 export function createLayout(): Layout {
   const bodies = new Map<string, Body>();
   let alpha = 1;
+  let mode: LayoutMode = 'force';
 
   return {
     bodies,
     get alpha() { return alpha; },
     set alpha(v: number) { alpha = v; },
+    get mode() { return mode; },
+    setMode(m) { if (m !== mode) { mode = m; alpha = Math.max(alpha, 0.9); } },
 
     sync(g) {
       const keep = new Set(g.nodes.map(n => n.key));
@@ -200,10 +226,16 @@ export function createLayout(): Layout {
         }
       }
 
-      for (const { b } of list) {
-        // A gentle pull to the middle keeps islands from drifting off.
-        b.vx -= b.x * 0.035 * alpha;
-        b.vy -= b.y * 0.035 * alpha;
+      for (const { n, b } of list) {
+        if (mode === 'flow') {
+          // Each kind to its column, firmly; up and down only a gentle pull.
+          b.vx += (FLOW_X[n.kind] - b.x) * 0.3 * alpha;
+          b.vy -= b.y * 0.02 * alpha;
+        } else {
+          // A gentle pull to the middle keeps islands from drifting off.
+          b.vx -= b.x * 0.035 * alpha;
+          b.vy -= b.y * 0.035 * alpha;
+        }
         if (b.fx !== null && b.fy !== null) { b.x = b.fx; b.y = b.fy; b.vx = 0; b.vy = 0; continue; }
         b.vx *= 0.6; b.vy *= 0.6;
         b.x += b.vx; b.y += b.vy;

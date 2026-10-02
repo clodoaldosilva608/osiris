@@ -34,6 +34,10 @@ export interface RunState {
   thinking: Record<string, number>;
   startedAt: number;
   updatedAt: number;
+  /** When the run stopped, or 0 while it goes. */
+  endedAt: number;
+  /** Every stage the engine has entered, in order, with when: the run's execution trace. */
+  steps: { phase: Phase; label: string; at: number }[];
   lastSeq: number;
 }
 
@@ -63,6 +67,8 @@ export function initialState(): RunState {
     thinking: {},
     startedAt: 0,
     updatedAt: 0,
+    endedAt: 0,
+    steps: [],
     lastSeq: -1,
   };
 }
@@ -84,6 +90,7 @@ export function applyEvent(s: RunState, e: Stamped): RunState {
     case 'phase':
       n.phase = e.phase;
       n.phaseLabel = e.label;
+      n.steps = [...s.steps, { phase: e.phase, label: e.label, at: e.at }];
       break;
     case 'context':
       n.context = e.items;
@@ -133,6 +140,7 @@ export function applyEvent(s: RunState, e: Stamped): RunState {
       n.status = e.status;
       n.message = e.message || '';
       n.thinking = {};
+      n.endedAt = e.at;
       if (e.status === 'done') {
         n.phase = 'done';
         n.phaseLabel = 'Forecast ready';
