@@ -224,7 +224,7 @@ export async function fetchAllQuotes(): Promise<Quote[]> {
  * failed refresh keeps serving the last good prices instead of blanking the
  * whole panel, which is what used to happen on a cold start.
  */
-const getQuotes = cachedSource<Quote>('markets', fetchAllQuotes, 60_000);
+export const getQuotes = cachedSource<Quote>('markets', fetchAllQuotes, 60_000);
 
 /** Chokepoint risk that has a direct read-through to the instruments above. */
 async function fetchScmAlerts(origin: string): Promise<string[]> {

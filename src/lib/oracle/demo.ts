@@ -1,0 +1,146 @@
+/**
+ * A scripted model for the tests and for local development: it answers every
+ * stage of a run with plausible JSON, so the whole pipeline (engine, API,
+ * MCP, panel and globe) can be exercised without anyone's key or money.
+ *
+ * It is offered as a provider only outside production (see providers.ts).
+ */
+import type { ChatFn, ChatRequest } from './providers';
+
+const ACTORS = [
+  { id: 'usa', name: 'United States', kind: 'state', country: 'US', place: 'Washington', lat: 38.9, lng: -77.04, lean: 0.3 },
+  { id: 'china', name: 'China', kind: 'state', country: 'CN', place: 'Beijing', lat: 39.9, lng: 116.4, lean: -0.4 },
+  { id: 'eu', name: 'European Union', kind: 'organisation', country: 'BE', place: 'Brussels', lat: 50.85, lng: 4.35, lean: 0.2 },
+  { id: 'russia', name: 'Russia', kind: 'state', country: 'RU', place: 'Moscow', lat: 55.75, lng: 37.62, lean: -0.5 },
+  { id: 'opec', name: 'OPEC+', kind: 'organisation', country: 'AT', place: 'Vienna', lat: 48.21, lng: 16.37, lean: -0.1 },
+  { id: 'india', name: 'India', kind: 'state', country: 'IN', place: 'New Delhi', lat: 28.61, lng: 77.21, lean: 0.1 },
+  { id: 'gulf', name: 'Gulf states', kind: 'group', country: 'SA', place: 'Riyadh', lat: 24.71, lng: 46.68, lean: 0 },
+  { id: 'markets', name: 'Global bond markets', kind: 'market', country: 'GB', place: 'London', lat: 51.51, lng: -0.13, lean: 0.2 },
+  { id: 'brazil', name: 'Brazil', kind: 'state', country: 'BR', place: 'Brasília', lat: -15.79, lng: -47.88, lean: 0.1 },
+  { id: 'japan', name: 'Japan', kind: 'state', country: 'JP', place: 'Tokyo', lat: 35.68, lng: 139.69, lean: 0.3 },
+];
+
+const RELATIONS: [string, string, string, number][] = [
+  ['usa', 'china', 'rivalry', 0.9], ['usa', 'eu', 'alliance', 0.8], ['usa', 'japan', 'alliance', 0.8], ['russia', 'china', 'alliance', 0.6],
+  ['eu', 'russia', 'sanctions', 0.7], ['opec', 'gulf', 'alliance', 0.9], ['opec', 'russia', 'negotiation', 0.6], ['india', 'russia', 'trade', 0.5],
+  ['markets', 'usa', 'influence', 0.7], ['brazil', 'china', 'trade', 0.6], ['japan', 'china', 'rivalry', 0.5], ['india', 'usa', 'negotiation', 0.4],
+];
+
+const PEOPLE = [
+  ['Mara Ellison', 'Sovereign risk analyst', 'New York, United States', 40.71, -74.01],
+  ['Kenji Arakawa', 'Energy desk trader', 'Tokyo, Japan', 35.68, 139.69],
+  ['Lucía Ferreyra', 'Political economist', 'Buenos Aires, Argentina', -34.6, -58.38],
+  ['Tomasz Wrona', 'Security analyst', 'Warsaw, Poland', 52.23, 21.01],
+  ['Amara Okafor', 'Commodities strategist', 'Lagos, Nigeria', 6.52, 3.38],
+  ['Farid Haddad', 'Former diplomat', 'Beirut, Lebanon', 33.89, 35.5],
+  ['Priya Raman', 'Superforecaster', 'Bengaluru, India', 12.97, 77.59],
+  ['Henrik Lund', 'Historian of crises', 'Oslo, Norway', 59.91, 10.75],
+  ['Wei Lin', 'Trade policy researcher', 'Singapore', 1.35, 103.82],
+  ['Sofia Marchetti', 'Central bank watcher', 'Frankfurt, Germany', 50.11, 8.68],
+  ['Diego Salas', 'Shipping analyst', 'Panama City, Panama', 8.98, -79.52],
+  ['Nadia Petrova', 'Contrarian macro investor', 'Dubai, UAE', 25.2, 55.27],
+  ['Joon-ho Park', 'Defence journalist', 'Seoul, South Korea', 37.57, 126.98],
+  ['Grace Mwangi', 'Development economist', 'Nairobi, Kenya', -1.29, 36.82],
+  ['Liam Byrne', 'Sell-side strategist', 'London, United Kingdom', 51.51, -0.13],
+  ['Ana Costa', 'Climate risk modeller', 'São Paulo, Brazil', -23.55, -46.63],
+] as const;
+
+function hash(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return (h >>> 0) / 4294967296;
+}
+
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+
+function answer(req: ChatRequest): string {
+  const u = req.user;
+  if (u.includes('Build the world model')) {
+    const cites = [...u.matchAll(/^\[(c\d+)\]/gm)].map(m => m[1]).slice(0, 5);
+    return JSON.stringify({
+      proposition: (u.match(/QUESTION: (.*)/)?.[1] ?? 'The event happens').trim(),
+      resolution: 'Resolves YES if credible reporting confirms it by the horizon.',
+      horizon: '2026-12-31',
+      base_rate: 0.3,
+      base_rate_reason: 'Comparable episodes resolved this way about three times in ten.',
+      focus: { place: 'Geneva', lat: 46.2, lng: 6.14 },
+      actors: ACTORS.map(a => ({ ...a, role: `${a.name} sets the pace on this question.` })),
+      relations: RELATIONS.map(([from, to, kind, strength]) => ({ from, to, kind, strength, note: `${from} and ${to}: ${kind}` })),
+      evidence: cites.map((c, i) => ({ source: c, actor: ACTORS[i % ACTORS.length].id, effect: i % 2 ? 'no' : 'yes', note: 'Bears on the outcome.' })),
+    });
+  }
+  if (u.includes('Assemble a panel of')) {
+    const n = Number(u.match(/panel of (\d+)/)?.[1] ?? 8);
+    return JSON.stringify({
+      agents: PEOPLE.slice(0, n).map(([name, role, place, lat, lng], i) => ({
+        id: slug(name), name, role, place, lat, lng,
+        lens: 'Weighs incentives over rhetoric.', bias: 'Anchoring on the last crisis.',
+        watches: [ACTORS[i % ACTORS.length].id, ACTORS[(i + 3) % ACTORS.length].id], prior: 0.2 + 0.5 * hash(name),
+      })),
+    });
+  }
+  if (u.includes('This is round')) {
+    const name = u.match(/You are ([^,]+),/)?.[1] ?? 'Someone';
+    const round = Number(u.match(/This is round (\d+) of/)?.[1] ?? 1);
+    const others = [...u.matchAll(/^- ([a-z0-9_]+) · /gm)].map(m => m[1]).filter(id => id !== slug(name));
+    const start = 0.15 + 0.6 * hash(name);
+    const p = start + (0.42 - start) * (1 - 1 / (1 + round));
+    const breaking = u.includes('BREAKING') ? 0.08 : 0;
+    const target = others[Math.floor(hash(name + round) * others.length)];
+    return JSON.stringify({
+      probability: Math.round(Math.min(0.95, p + breaking) * 100) / 100,
+      confidence: 0.4 + 0.5 * hash(name + 'c'),
+      post: round === 1
+        ? `Opening view from ${name.split(' ')[0]}: the base rate is the anchor, and nothing in the feed moves me far off it yet.`
+        : `Round ${round}: ${target ? `${target.replace(/_/g, ' ')} makes a fair point, ` : ''}but the incentives still cut the other way.`,
+      reasoning: 'Base rate first, then the strongest actor incentives.',
+      replies: target ? [{ to: target, stance: hash(target + round) > 0.5 ? 'agree' : 'disagree', point: 'Your timeline looks too tight.' }] : [],
+      focus: [ACTORS[Math.floor(hash(name + round) * ACTORS.length)].id],
+      changed: round === 1 ? 'nothing' : 'The panel’s spread narrowed.',
+    });
+  }
+  if (u.includes('report agent') && u.includes('JSON shape')) {
+    const swarm = Number(u.match(/consensus is (\d+)%/)?.[1] ?? 40) / 100;
+    return JSON.stringify({
+      headline: 'Panel leans no, with a live minority case',
+      probability: swarm,
+      confidence: 'medium',
+      summary: 'The panel converged below even odds. The base rate anchors the view, while the minority sees a faster path if the main actors align. The spread narrowed every round.',
+      drivers: [
+        { text: 'Great-power rivalry limits room for a deal', push: 'no', weight: 0.7, actor: 'china' },
+        { text: 'Allied coordination is unusually tight', push: 'yes', weight: 0.5, actor: 'eu' },
+        { text: 'Energy prices raise the cost of escalation', push: 'no', weight: 0.4, actor: 'opec' },
+      ],
+      scenarios: [
+        { name: 'Muddle through', probability: 0.5, description: 'No decisive move before the horizon.', place: 'Brussels', lat: 50.85, lng: 4.35 },
+        { name: 'Breakthrough', probability: swarm, description: 'A deal lands late in the window.', place: 'Geneva', lat: 46.2, lng: 6.14 },
+        { name: 'Escalation', probability: 0.15, description: 'A crisis overtakes the agenda.', place: 'Taipei', lat: 25.03, lng: 121.56 },
+      ],
+      signposts: [
+        { text: 'Envoys meet in person', means: 'yes', place: 'Geneva', lat: 46.2, lng: 6.14 },
+        { text: 'New export controls announced', means: 'no', place: 'Washington', lat: 38.9, lng: -77.04 },
+        { text: 'Tanker traffic falls in the Strait of Hormuz', means: 'no', place: 'Strait of Hormuz', lat: 26.57, lng: 56.25 },
+      ],
+      dissent: 'A third of the panel sees a fast path if the summit holds.',
+      caveats: ['Demo model: scripted answers, not analysis.'],
+      deviation_reason: null,
+    });
+  }
+  return 'This is the demo model talking. With a real provider, the panelist or the report agent would answer here in character.';
+}
+
+/** A chat function that answers from the script, after `delay` ms (a range, to look like a live model). */
+export function createDemoChat(delay: [number, number] = [0, 0]): ChatFn {
+  return async req => {
+    const wait = delay[0] + Math.random() * (delay[1] - delay[0]);
+    if (wait > 0) {
+      await new Promise<void>((resolve, reject) => {
+        const t = setTimeout(resolve, wait);
+        req.signal?.addEventListener('abort', () => { clearTimeout(t); reject(req.signal!.reason); }, { once: true });
+      });
+    }
+    if (req.signal?.aborted) throw req.signal.reason;
+    const text = answer(req);
+    return { text, input: Math.round(req.user.length / 4), output: Math.round(text.length / 4) };
+  };
+}
