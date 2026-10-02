@@ -30,7 +30,7 @@ const LayerPanel = dynamic(() => import('@/components/LayerPanel'));
 const SpaceCam = dynamic(() => import('@/components/SpaceCam'), { ssr: false });
 const CameraViewer = dynamic(() => import('@/components/CameraViewer'));
 const OsintPanel = dynamic(() => import('@/components/OsintPanel'));
-const OsiPanel = dynamic(() => import('@/components/OsiPanel'));
+const OiPanel = dynamic(() => import('@/components/OiPanel'));
 const DrawingToolbar = dynamic(() => import('@/components/DrawingToolbar'), { ssr: false });
 const DrawHud = dynamic(() => import('@/components/DrawHud'), { ssr: false });
 // The measurement helpers are pure functions — importing them directly keeps
@@ -43,9 +43,9 @@ import { diffSweep, appendEvents, type WatchBaseline, type WatchEvent } from '@/
 import { STORAGE_KEY, serializeShapes, deserializeShapes, shapesToGeoJSON, downloadFile } from '@/lib/aoi-export';
 const TokenPanel = dynamic(() => import('@/components/TokenPanel'));
 import SupportMenu from '@/components/SupportMenu';
-import { useOsi } from '@/lib/osi/client';
-import { workspaceInsets } from '@/lib/osi/layout';
-import type { OsiGlobe, OsiHover } from '@/lib/osi/globe';
+import { useOi } from '@/lib/oi/client';
+import { workspaceInsets } from '@/lib/oi/layout';
+import type { OiGlobe, OiHover } from '@/lib/oi/globe';
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -315,100 +315,100 @@ export default function Dashboard() {
   const [arcgisLayers, setArcgisLayers] = useState<Array<{ id: string; title: string; url: string; geojson: any; color: string; visible: boolean; opacity: number }>>([]);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number; bounds?: { west: number; south: number; east: number; north: number } } | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [mobilePanel, setMobilePanel] = useState<'layers'|'markets'|'intel'|'search'|'recon'|'remote'|'osi'|null>(null);
+  const [mobilePanel, setMobilePanel] = useState<'layers'|'markets'|'intel'|'search'|'recon'|'remote'|'oi'|null>(null);
 
-  // ── OSIRIS OSI ── the run lives here, not in the panel, so the globe keeps
-  // drawing it while the panel is closed. State goes to the map's OSI layer
+  // ── OSIRIS OI ── the run lives here, not in the panel, so the globe keeps
+  // drawing it while the panel is closed. State goes to the map's OI layer
   // directly rather than through a prop, so the map does not re-render per event.
-  const osi = useOsi();
-  const [showOsi, setShowOsi] = useState(false);
-  const osiAnchor = useRef<HTMLDivElement>(null);
-  const [osiTop, setOsiTop] = useState(0);
+  const oi = useOi();
+  const [showOi, setShowOi] = useState(false);
+  const oiAnchor = useRef<HTMLDivElement>(null);
+  const [oiTop, setOiTop] = useState(0);
   useLayoutEffect(() => {
-    if (!showOsi) return;
+    if (!showOi) return;
     const place = () => {
-      const anchor = osiAnchor.current?.getBoundingClientRect();
-      if (anchor) setOsiTop(Math.round(64 - anchor.top));
+      const anchor = oiAnchor.current?.getBoundingClientRect();
+      if (anchor) setOiTop(Math.round(64 - anchor.top));
     };
     place();
     window.addEventListener('resize', place);
     return () => window.removeEventListener('resize', place);
-  }, [showOsi]);
+  }, [showOi]);
   /** What is selected on the globe or in the panel: a point's key, or "link:<id>" for an arc. */
-  const [osiSelected, setOsiSelected] = useState<string | null>(null);
-  const [osiHover, setOsiHover] = useState<OsiHover | null>(null);
-  const [osiFollowing, setOsiFollowing] = useState(true);
-  const [osiTheater, setOsiTheater] = useState(false);
+  const [oiSelected, setOiSelected] = useState<string | null>(null);
+  const [oiHover, setOiHover] = useState<OiHover | null>(null);
+  const [oiFollowing, setOiFollowing] = useState(true);
+  const [oiTheater, setOiTheater] = useState(false);
   // A different run (or none) starts with nothing selected.
-  const [osiSelectionRun, setOsiSelectionRun] = useState(osi.runId);
-  if (osiSelectionRun !== osi.runId) {
-    setOsiSelectionRun(osi.runId);
-    setOsiSelected(null);
+  const [oiSelectionRun, setOiSelectionRun] = useState(oi.runId);
+  if (oiSelectionRun !== oi.runId) {
+    setOiSelectionRun(oi.runId);
+    setOiSelected(null);
   }
-  const osiGlobe = useRef<OsiGlobe | null>(null);
-  const osiState = useRef(osi.state);
-  const osiSelectedRef = useRef(osiSelected);
+  const oiGlobe = useRef<OiGlobe | null>(null);
+  const oiState = useRef(oi.state);
+  const oiSelectedRef = useRef(oiSelected);
   useEffect(() => {
-    osiState.current = osi.state;
-    osiGlobe.current?.update(osi.state);
-  }, [osi.state]);
+    oiState.current = oi.state;
+    oiGlobe.current?.update(oi.state);
+  }, [oi.state]);
   useEffect(() => {
-    osiSelectedRef.current = osiSelected;
-    osiGlobe.current?.select(osiSelected);
-  }, [osiSelected]);
-  const handleOsiGlobe = useCallback((globe: OsiGlobe | null) => {
-    osiGlobe.current = globe;
-    globe?.update(osiState.current);
-    globe?.select(osiSelectedRef.current);
+    oiSelectedRef.current = oiSelected;
+    oiGlobe.current?.select(oiSelected);
+  }, [oiSelected]);
+  const handleOiGlobe = useCallback((globe: OiGlobe | null) => {
+    oiGlobe.current = globe;
+    globe?.update(oiState.current);
+    globe?.select(oiSelectedRef.current);
   }, []);
   // A click on the globe selects, and opens the panel to show what was clicked; empty map clears.
-  const handleOsiSelect = useCallback((key: string | null) => {
-    setOsiSelected(key);
+  const handleOiSelect = useCallback((key: string | null) => {
+    setOiSelected(key);
     if (!key) return;
-    if (window.matchMedia('(max-width: 767px)').matches) setMobilePanel('osi');
-    else setShowOsi(true);
+    if (window.matchMedia('(max-width: 767px)').matches) setMobilePanel('oi');
+    else setShowOi(true);
   }, []);
   // Going somewhere on purpose takes the camera off the director.
-  const handleOsiLocate = useCallback((lat: number, lng: number, zoom?: number) => {
-    osiGlobe.current?.follow(false);
+  const handleOiLocate = useCallback((lat: number, lng: number, zoom?: number) => {
+    oiGlobe.current?.follow(false);
     setFlyToLocation({ lat, lng, zoom, ts: Date.now() });
   }, []);
-  const followOsi = useCallback(() => osiGlobe.current?.follow(true), []);
+  const followOi = useCallback(() => oiGlobe.current?.follow(true), []);
   // Full screen: the workspace's columns sit either side, and the globe stays centred on the stage between.
-  const osiTheaterOn = osiTheater && Boolean(osi.state);
+  const oiTheaterOn = oiTheater && Boolean(oi.state);
   // On a phone the drawer covers the lower half: the globe centres in the space above it.
-  const osiDrawerOpen = mobilePanel === 'osi' && Boolean(osi.state);
+  const oiDrawerOpen = mobilePanel === 'oi' && Boolean(oi.state);
   useEffect(() => {
-    if (!osiDrawerOpen) return;
+    if (!oiDrawerOpen) return;
     const drawer = Math.round(Math.min(window.innerHeight * 0.55, window.innerHeight - 100)) + 52;
-    osiGlobe.current?.setInsets({ top: 70, bottom: drawer, left: 0, right: 0 });
-    return () => osiGlobe.current?.setInsets(null);
-  }, [osiDrawerOpen]);
+    oiGlobe.current?.setInsets({ top: 70, bottom: drawer, left: 0, right: 0 });
+    return () => oiGlobe.current?.setInsets(null);
+  }, [oiDrawerOpen]);
   useEffect(() => {
-    const inset = () => osiGlobe.current?.setInsets(osiTheaterOn ? workspaceInsets(window.innerWidth) : null);
+    const inset = () => oiGlobe.current?.setInsets(oiTheaterOn ? workspaceInsets(window.innerWidth) : null);
     inset();
     // The app's own HUD (everything marked data-hud) steps back while the workspace has the screen.
-    document.documentElement.toggleAttribute('data-osi-theater', osiTheaterOn);
-    if (osiTheaterOn) window.addEventListener('resize', inset);
+    document.documentElement.toggleAttribute('data-oi-theater', oiTheaterOn);
+    if (oiTheaterOn) window.addEventListener('resize', inset);
     return () => {
       window.removeEventListener('resize', inset);
-      document.documentElement.removeAttribute('data-osi-theater');
+      document.documentElement.removeAttribute('data-oi-theater');
     };
-  }, [osiTheaterOn]);
-  // A shared link (?osi=<run>) opens the panel on that run, and the camera
+  }, [oiTheaterOn]);
+  // A shared link (?oi=<run>) opens the panel on that run, and the camera
   // goes to the run rather than to the visitor's city.
   useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get('osi');
+    const id = new URLSearchParams(window.location.search).get('oi');
     if (!id) return;
     autoLocateCancelled.current = true;
-    if (window.matchMedia('(max-width: 767px)').matches) setMobilePanel('osi');
-    else setShowOsi(true);
-    void osi.watch(id);
+    if (window.matchMedia('(max-width: 767px)').matches) setMobilePanel('oi');
+    else setShowOi(true);
+    void oi.watch(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // Once a run is under way the camera is the director's (lib/osi/camera): a late answer about the
+  // Once a run is under way the camera is the director's (lib/oi/camera): a late answer about the
   // visitor's city must not fly it away.
-  useEffect(() => { if (osi.runId) autoLocateCancelled.current = true; }, [osi.runId]);
+  useEffect(() => { if (oi.runId) autoLocateCancelled.current = true; }, [oi.runId]);
   const [mapProjection, setMapProjection] = useState<'globe'|'mercator'>('globe');
   const [terrainFocus, setTerrainFocus] = useState(0);
   const [terrainStatus, setTerrainStatus] = useState<TerrainStatus>('idle');
@@ -604,25 +604,25 @@ export default function Dashboard() {
     urlTimer.current = setTimeout(() => {
       const active = Object.entries(activeLayers).filter(([,v]) => v).map(([k]) => k).join(',');
       // A forecast being watched keeps its place in the address, so the address bar stays shareable.
-      const osiRun = new URLSearchParams(window.location.search).get('osi');
-      const url = `${window.location.pathname}?layers=${active}${osiRun ? `&osi=${encodeURIComponent(osiRun)}` : ''}`;
+      const oiRun = new URLSearchParams(window.location.search).get('oi');
+      const url = `${window.location.pathname}?layers=${active}${oiRun ? `&oi=${encodeURIComponent(oiRun)}` : ''}`;
       window.history.replaceState(null, '', url);
     }, 1500);
   }, [activeLayers]);
 
-  // OSI focus: clear the globe of the other layers while a forecast draws,
+  // OI focus: clear the globe of the other layers while a forecast draws,
   // and put back exactly what was on when focus ends.
-  const [osiFocus, setOsiFocus] = useState(false);
+  const [oiFocus, setOiFocus] = useState(false);
   const focusSaved = useRef<typeof activeLayers | null>(null);
   /** Whether focus is on, readable at once (the state lags a render behind). */
   const focusOn = useRef(false);
-  const toggleOsiFocus = useCallback(() => {
+  const toggleOiFocus = useCallback(() => {
     const saved = focusSaved.current;
     if (saved) {
       focusSaved.current = null;
       focusOn.current = false;
       setActiveLayers(saved);
-      setOsiFocus(false);
+      setOiFocus(false);
       return;
     }
     const KEEP = new Set(['day_night', 'live_clouds', 'terrain_3d', 'terrain_elevation']);
@@ -631,20 +631,20 @@ export default function Dashboard() {
       return Object.fromEntries(Object.entries(prev).map(([k, v]) => [k, KEEP.has(k) ? v : false])) as typeof prev;
     });
     focusOn.current = true;
-    setOsiFocus(true);
+    setOiFocus(true);
   }, []);
   // The theatre clears the globe for the research, and gives the layers back when it closes;
   // focus someone switched on themselves stays their choice.
   const theaterFocused = useRef(false);
   useEffect(() => {
-    if (osiTheaterOn && !focusOn.current) {
+    if (oiTheaterOn && !focusOn.current) {
       theaterFocused.current = true;
-      toggleOsiFocus();
-    } else if (!osiTheaterOn && theaterFocused.current) {
+      toggleOiFocus();
+    } else if (!oiTheaterOn && theaterFocused.current) {
       theaterFocused.current = false;
-      if (focusOn.current) toggleOsiFocus();
+      if (focusOn.current) toggleOiFocus();
     }
-  }, [osiTheaterOn, toggleOsiFocus]);
+  }, [oiTheaterOn, toggleOiFocus]);
 
   // Global Stats Fetch
   useEffect(() => {
@@ -1442,21 +1442,21 @@ export default function Dashboard() {
           onDrawComplete={handleDrawComplete}
           drawnPolygons={drawnPolygons}
           aircraftAirports={aircraftAirports}
-          onOsiGlobe={handleOsiGlobe}
-          onOsiSelect={handleOsiSelect}
-          onOsiHover={setOsiHover}
-          onOsiFollow={setOsiFollowing}
+          onOiGlobe={handleOiGlobe}
+          onOiSelect={handleOiSelect}
+          onOiHover={setOiHover}
+          onOiFollow={setOiFollowing}
         />
       </ErrorBoundary>
 
-      {/* ── OSI: what the pointer is over on the globe ── */}
-      {osiHover && !isMobile && (
+      {/* ── OI: what the pointer is over on the globe ── */}
+      {oiHover && !isMobile && (
         <div
           className="fixed z-[950] pointer-events-none max-w-[300px] rounded-lg border border-[var(--border-primary)] bg-[rgba(12,14,26,0.94)] backdrop-blur-xl px-3 py-2 shadow-[0_8px_32px_rgba(0,0,0,0.6)]"
-          style={{ left: Math.min(osiHover.x + 14, (typeof window !== 'undefined' ? window.innerWidth : 1920) - 314), top: osiHover.y + 16 }}
+          style={{ left: Math.min(oiHover.x + 14, (typeof window !== 'undefined' ? window.innerWidth : 1920) - 314), top: oiHover.y + 16 }}
         >
-          <div className="text-[11.5px] font-medium leading-snug text-[var(--text-heading)]">{osiHover.title}</div>
-          {osiHover.detail && <div className="mt-0.5 text-[10.5px] leading-snug text-[var(--text-secondary)]">{osiHover.detail}</div>}
+          <div className="text-[11.5px] font-medium leading-snug text-[var(--text-heading)]">{oiHover.title}</div>
+          {oiHover.detail && <div className="mt-0.5 text-[10.5px] leading-snug text-[var(--text-secondary)]">{oiHover.detail}</div>}
           <div className="mt-1 text-[8.5px] font-mono tracking-[0.18em] text-[var(--gold-primary)]">CLICK TO OPEN</div>
         </div>
       )}
@@ -1636,31 +1636,31 @@ export default function Dashboard() {
 
       {/* ── RIGHT TOOL STRIP (desktop only — mobile uses bottom nav) ── */}
       {!isMobile && <motion.div data-hud initial={{ opacity: 0, x: 12 }} animate={revealed ? { opacity: 1, x: 0 } : { opacity: 0, x: 12 }} transition={hudIn(0.3)} className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-[250] pointer-events-auto bg-black/40 backdrop-blur-sm p-1 rounded-full border border-white/5">
-        <div ref={osiAnchor} className="relative group">
-          <button onClick={() => { setShowOsi(!showOsi); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowSpaceCam(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showOsi ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`} title="OSI — swarm forecasting on live intelligence, with your own AI key" aria-label="OSI" aria-expanded={showOsi}>
-            <Orbit className={`w-4 h-4 ${showOsi ? 'text-[var(--gold-primary)]' : 'text-white/60'}`} />
-            {showOsi && (
+        <div ref={oiAnchor} className="relative group">
+          <button onClick={() => { setShowOi(!showOi); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowSpaceCam(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showOi ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`} title="OI — swarm forecasting on live intelligence, with your own AI key" aria-label="OI" aria-expanded={showOi}>
+            <Orbit className={`w-4 h-4 ${showOi ? 'text-[var(--gold-primary)]' : 'text-white/60'}`} />
+            {showOi && (
               <span
                 aria-hidden="true"
                 className="absolute -right-1 top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-full bg-current text-[var(--gold-primary)]"
               />
             )}
-            {osi.state?.status === 'running' && <span aria-hidden="true" className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-[var(--alert-green)] animate-pulse" />}
+            {oi.state?.status === 'running' && <span aria-hidden="true" className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-[var(--alert-green)] animate-pulse" />}
           </button>
-          <span className="absolute right-11 top-1/2 -translate-y-1/2 px-2 py-1 text-[9px] font-mono tracking-wider text-white/80 bg-black/80 backdrop-blur-sm rounded whitespace-nowrap opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none">OSI</span>
+          <span className="absolute right-11 top-1/2 -translate-y-1/2 px-2 py-1 text-[9px] font-mono tracking-wider text-white/80 bg-black/80 backdrop-blur-sm rounded whitespace-nowrap opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none">OI</span>
           <AnimatePresence>
-            {showOsi && (
-              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-12 w-[412px]" style={{ top: osiTop }}>
-                <OsiPanel osi={osi} selected={osiSelected} onSelect={setOsiSelected} onClose={() => { setShowOsi(false); setOsiTheater(false); }}
-                  focus={osiFocus} onFocus={toggleOsiFocus} onLocate={handleOsiLocate}
-                  theater={osiTheater} onTheater={setOsiTheater} following={osiFollowing} onFollow={followOsi} />
+            {showOi && (
+              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-12 w-[412px]" style={{ top: oiTop }}>
+                <OiPanel oi={oi} selected={oiSelected} onSelect={setOiSelected} onClose={() => { setShowOi(false); setOiTheater(false); }}
+                  focus={oiFocus} onFocus={toggleOiFocus} onLocate={handleOiLocate}
+                  theater={oiTheater} onTheater={setOiTheater} following={oiFollowing} onFollow={followOi} />
               </motion.div>
             )}
           </AnimatePresence>
         </div>
 
         <div className="relative group">
-          <button onClick={() => { setShowIntel(!showIntel); setShowOsi(false); setShowMarkets(false); setShowAlerts(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showIntel ? 'bg-[var(--cyan-primary)]/20' : 'hover:bg-white/10'}`} title="OSINT Recon — IP lookup, network sweep, geolocation" aria-label="OSINT Recon" aria-expanded={showIntel}>
+          <button onClick={() => { setShowIntel(!showIntel); setShowOi(false); setShowMarkets(false); setShowAlerts(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showIntel ? 'bg-[var(--cyan-primary)]/20' : 'hover:bg-white/10'}`} title="OSINT Recon — IP lookup, network sweep, geolocation" aria-label="OSINT Recon" aria-expanded={showIntel}>
             <Radar className={`w-4 h-4 ${showIntel ? 'text-[var(--cyan-primary)]' : 'text-white/60'}`} />
             {showIntel && (
               <span
@@ -1686,7 +1686,7 @@ export default function Dashboard() {
         </div>
 
         <div className="relative group">
-          <button onClick={() => { setShowIntel(false); setShowOsi(false); setShowAlerts(false); setShowMarkets(false); setShowSpaceCam(v => !v); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showSpaceCam ? 'bg-[#00E5FF]/20' : 'hover:bg-white/10'}`} title="Live from Space — 24/7 video downlink from the ISS" aria-label="Live from Space" aria-expanded={showSpaceCam}>
+          <button onClick={() => { setShowIntel(false); setShowOi(false); setShowAlerts(false); setShowMarkets(false); setShowSpaceCam(v => !v); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showSpaceCam ? 'bg-[#00E5FF]/20' : 'hover:bg-white/10'}`} title="Live from Space — 24/7 video downlink from the ISS" aria-label="Live from Space" aria-expanded={showSpaceCam}>
             <Radio className={`w-4 h-4 ${showSpaceCam ? 'text-[#00E5FF]' : 'text-white/60'}`} />
             {showSpaceCam && (
               <span
@@ -1706,7 +1706,7 @@ export default function Dashboard() {
         </div>
 
         <div ref={marketsAnchor} className="relative group">
-          <button onClick={() => { setShowMarkets(!showMarkets); setShowOsi(false); setShowIntel(false); setShowAlerts(false); setShowSpaceCam(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showMarkets ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`} title="Markets — crypto prices, space weather, global indices" aria-label="Markets" aria-expanded={showMarkets}>
+          <button onClick={() => { setShowMarkets(!showMarkets); setShowOi(false); setShowIntel(false); setShowAlerts(false); setShowSpaceCam(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showMarkets ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`} title="Markets — crypto prices, space weather, global indices" aria-label="Markets" aria-expanded={showMarkets}>
             <BarChart3 className={`w-4 h-4 ${showMarkets ? 'text-[var(--gold-primary)]' : 'text-white/60'}`} />
             {showMarkets && (
               <span
@@ -1726,7 +1726,7 @@ export default function Dashboard() {
         </div>
 
         <div className="relative group">
-          <button onClick={() => { setShowAlerts(!showAlerts); setShowOsi(false); setShowIntel(false); setShowMarkets(false); setShowDrawing(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showAlerts ? 'bg-[#FF3D3D]/20' : 'hover:bg-white/10'}`} title="Live Alerts — earthquakes, conflicts, breaking news" aria-label="Live Alerts" aria-expanded={showAlerts}>
+          <button onClick={() => { setShowAlerts(!showAlerts); setShowOi(false); setShowIntel(false); setShowMarkets(false); setShowDrawing(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showAlerts ? 'bg-[#FF3D3D]/20' : 'hover:bg-white/10'}`} title="Live Alerts — earthquakes, conflicts, breaking news" aria-label="Live Alerts" aria-expanded={showAlerts}>
             <AlertTriangle className={`w-4 h-4 ${showAlerts ? 'text-[#FF3D3D]' : 'text-white/60'}`} />
             {showAlerts && (
               <span
@@ -1960,7 +1960,7 @@ export default function Dashboard() {
                 { id: 'markets' as const, icon: BarChart3, label: 'MARKETS' },
                 { id: 'intel' as const, icon: Newspaper, label: 'INTEL' },
                 { id: 'recon' as const, icon: Radar, label: 'RECON' },
-                { id: 'osi' as const, icon: Orbit, label: 'OSI' },
+                { id: 'oi' as const, icon: Orbit, label: 'OI' },
                 { id: 'search' as const, icon: Search, label: 'SEARCH' },
                 // Routing was reachable only from the desktop tool rail, so a
                 // phone could not open it at all. It sits next to SEARCH
@@ -2017,7 +2017,7 @@ export default function Dashboard() {
                 <div className="px-3 pb-3">
                   <div className="flex items-center justify-between mb-2">
                     <span className="hud-text text-[10px] text-[var(--text-primary)]">
-                      {mobilePanel === 'layers' ? 'LAYERS & STATS' : mobilePanel === 'markets' ? 'MARKETS & INTEL' : mobilePanel === 'intel' ? 'INTEL FEED' : mobilePanel === 'recon' ? 'OSIRIS RECON' : mobilePanel === 'remote' ? 'WORLD REMOTE' : mobilePanel === 'osi' ? 'OSIRIS OSI' : 'SEARCH'}
+                      {mobilePanel === 'layers' ? 'LAYERS & STATS' : mobilePanel === 'markets' ? 'MARKETS & INTEL' : mobilePanel === 'intel' ? 'INTEL FEED' : mobilePanel === 'recon' ? 'OSIRIS RECON' : mobilePanel === 'remote' ? 'WORLD REMOTE' : mobilePanel === 'oi' ? 'OSIRIS OI' : 'SEARCH'}
                     </span>
                     <button onClick={() => setMobilePanel(null)} className="text-[var(--text-muted)] p-1"><X className="w-4 h-4" /></button>
                   </div>
@@ -2039,9 +2039,9 @@ export default function Dashboard() {
                     </>
                   )}
                   {mobilePanel === 'markets' && <MarketsPanel data={data} spaceWeather={spaceWeather} />}
-                  {mobilePanel === 'osi' && (
-                    <OsiPanel osi={osi} selected={osiSelected} onSelect={setOsiSelected} embedded focus={osiFocus} onFocus={toggleOsiFocus}
-                      onLocate={handleOsiLocate} following={osiFollowing} onFollow={followOsi} />
+                  {mobilePanel === 'oi' && (
+                    <OiPanel oi={oi} selected={oiSelected} onSelect={setOiSelected} embedded focus={oiFocus} onFocus={toggleOiFocus}
+                      onLocate={handleOiLocate} following={oiFollowing} onFollow={followOi} />
                   )}
                   {mobilePanel === 'intel' && <IntelFeed data={data} onLocate={(lat, lng) => { setFlyToLocation({ lat, lng, ts: Date.now() }); setMobilePanel(null); }} />}
                   {mobilePanel === 'search' && (

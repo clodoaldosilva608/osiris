@@ -594,23 +594,23 @@ export const API_GROUPS: ApiGroup[] = [
     ],
   },
   {
-    id: 'osi',
-    title: 'OSI (Prediction)',
+    id: 'oi',
+    title: 'OI (Prediction)',
     blurb:
-      'Swarm-intelligence forecasting on live OSIRIS intelligence: a simulated panel of AI forecasters debates a question over rounds, and a report agent writes a calibrated forecast. Runs on your own model key, sent in headers and never stored. Also served as an MCP server at /api/mcp; see OSI guide.',
+      'Swarm-intelligence forecasting on live OSIRIS intelligence: a simulated panel of AI forecasters debates a question over rounds, and a report agent writes a calibrated forecast. Runs on your own model key, sent in headers and never stored. Also served as an MCP server at /api/mcp; see OI guide.',
     endpoints: [
       {
-        path: '/api/osi',
+        path: '/api/oi',
         method: 'GET',
         summary: 'What the service offers: providers and their default models, run depths and their model-call counts, limits and endpoints.',
         returns: ['name', 'version', 'credit', 'providers', 'depths', 'limits', 'auth', 'endpoints'],
       },
       {
-        path: '/api/osi/models',
+        path: '/api/oi/models',
         method: 'POST',
         summary: 'The models your key can use, straight from the provider. Doubles as a key check: a rejected key fails here, before a run spends anything.',
         returns: ['provider', 'ok', 'listed', 'models', 'default'],
-        headers: { 'X-OSI-Key': '$YOUR_MODEL_KEY' },
+        headers: { 'X-OI-Key': '$YOUR_MODEL_KEY' },
         requiresAuth: true,
         notes: 'Providers: `openai`, `anthropic`, `google`, `openrouter`, `groq`, `deepseek`, `xai`, `mistral`, `qwen`. 401 when the provider rejects the key, 402 when the account is out of credit. 20 checks per minute per address.',
         bodyExample: `{
@@ -618,11 +618,11 @@ export const API_GROUPS: ApiGroup[] = [
 }`,
       },
       {
-        path: '/api/osi/runs',
+        path: '/api/oi/runs',
         method: 'POST',
         summary: 'Start a forecast. Answers 202 at once with the run id, a link to watch it on the globe, and a run token for steering it.',
         returns: ['id', 'status', 'phase', 'watch_url', 'events_url', 'run_token', 'progress'],
-        headers: { 'X-OSI-Provider': 'openai', 'X-OSI-Key': '$YOUR_MODEL_KEY', 'X-OSI-Model': 'gpt-5-mini' },
+        headers: { 'X-OI-Provider': 'openai', 'X-OI-Key': '$YOUR_MODEL_KEY', 'X-OI-Model': 'gpt-5-mini' },
         requiresAuth: true,
         notes: '`depth` is `quick` (6 agents × 2 rounds, about 15 model calls), `standard` (10 × 3, about 33) or `deep` (16 × 4, about 67). `seed` takes up to 20,000 characters of your own material. `use_feeds` (default true) grounds the run in OSIRIS news, quakes and markets. Keep `run_token`: it is not shown again. Two runs at once and eight per ten minutes per address.',
         bodyExample: `{
@@ -632,7 +632,7 @@ export const API_GROUPS: ApiGroup[] = [
 }`,
       },
       {
-        path: '/api/osi/runs/{id}',
+        path: '/api/oi/runs/{id}',
         method: 'GET',
         summary: 'A run summary: phase, the panel round by round, and once written, the report with drivers, scenarios, signposts and dissent.',
         params: [
@@ -643,31 +643,31 @@ export const API_GROUPS: ApiGroup[] = [
         notes: '`kind` is `binary` (a probability of YES), `choice` (a share for each of `outcomes`) or `number` (an `estimate` with an 80% `low`–`high` range, in `unit`); `answer` says it in words either way. Anyone with the id can read a run: that is how a forecast is shared. Runs are kept for three hours after they finish.',
       },
       {
-        path: '/api/osi/runs/{id}/events',
+        path: '/api/oi/runs/{id}/events',
         method: 'GET',
         summary: 'The run as it happens, over Server-Sent Events: phases, actors and relations, panelists, every post and reply, round statistics, injected events and the report.',
         returns: ['…SSE event stream'],
         notes: 'Each event is `id: <seq>` and `data: <json>`, with a `t` field naming its type. The stream replays from the start, follows live, and closes after `end`. Reconnect with `Last-Event-ID` (or `?after=<seq>`) to resume.',
       },
       {
-        path: '/api/osi/runs/{id}/ask',
+        path: '/api/oi/runs/{id}/ask',
         method: 'POST',
         summary: 'Question the report agent, or any panelist by id, about a run. Uses your key again.',
         returns: ['id', 'target', 'reply'],
-        headers: { 'X-OSI-Key': '$YOUR_MODEL_KEY' },
+        headers: { 'X-OI-Key': '$YOUR_MODEL_KEY' },
         requiresAuth: true,
-        notes: "Provider and model default to the run's own; send `X-OSI-Provider` and `X-OSI-Model` to ask on another. 20 questions per minute per address.",
+        notes: "Provider and model default to the run's own; send `X-OI-Provider` and `X-OI-Model` to ask on another. 20 questions per minute per address.",
         bodyExample: `{
   "target": "report",
   "message": "What would move this forecast most?"
 }`,
       },
       {
-        path: '/api/osi/runs/{id}/inject',
+        path: '/api/oi/runs/{id}/inject',
         method: 'POST',
         summary: "God's-eye view: drop an event into a running simulation. The panel takes it up at the start of its next round.",
         returns: ['id', 'queued', 'lands_in_round'],
-        headers: { 'X-OSI-Run-Token': '$RUN_TOKEN' },
+        headers: { 'X-OI-Run-Token': '$RUN_TOKEN' },
         requiresAuth: true,
         notes: 'Needs the run token from the start response. Up to eight events per run; refused once the report is being written.',
         bodyExample: `{
@@ -675,20 +675,20 @@ export const API_GROUPS: ApiGroup[] = [
 }`,
       },
       {
-        path: '/api/osi/runs/{id}',
+        path: '/api/oi/runs/{id}',
         method: 'DELETE',
         summary: 'Cancel a running forecast.',
         returns: ['id', 'cancelled', 'status'],
-        headers: { 'X-OSI-Run-Token': '$RUN_TOKEN' },
+        headers: { 'X-OI-Run-Token': '$RUN_TOKEN' },
         requiresAuth: true,
       },
       {
         path: '/api/mcp',
         method: 'POST',
-        summary: 'OSI and live OSIRIS intelligence as an MCP server (Streamable HTTP, stateless) for agents such as Hermes, Claude and Cursor.',
+        summary: 'OI and live OSIRIS intelligence as an MCP server (Streamable HTTP, stateless) for agents such as Hermes, Claude and Cursor.',
         returns: ['jsonrpc', 'id', 'result'],
-        headers: { Accept: 'application/json, text/event-stream', 'X-OSI-Provider': 'openai', 'X-OSI-Key': '$YOUR_MODEL_KEY' },
-        notes: 'Tools: `osi_predict`, `osi_get_run`, `osi_ask`, `osi_inject`, `osi_cancel`, `osi_info`, and the free `osiris_world_brief` and `osiris_markets`, which need no key. A call that waits on a forecast streams progress notifications when the client accepts SSE. Protocol versions 2025-06-18, 2025-03-26 and 2024-11-05.',
+        headers: { Accept: 'application/json, text/event-stream', 'X-OI-Provider': 'openai', 'X-OI-Key': '$YOUR_MODEL_KEY' },
+        notes: 'Tools: `oi_predict`, `oi_get_run`, `oi_ask`, `oi_inject`, `oi_cancel`, `oi_info`, and the free `osiris_world_brief` and `osiris_markets`, which need no key. A call that waits on a forecast streams progress notifications when the client accepts SSE. Protocol versions 2025-06-18, 2025-03-26 and 2024-11-05.',
         bodyExample: `{
   "jsonrpc": "2.0",
   "id": 1,

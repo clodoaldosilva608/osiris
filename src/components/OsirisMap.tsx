@@ -6,7 +6,7 @@ import * as maplibregl from 'maplibre-gl';
 import { installTerrainTileProtocol } from '@/lib/terrain-tiles';
 import { CLOUDS_ATTRIBUTION, CLOUDS_CREDIT, CLOUDS_LAYER, frameTime } from '@/lib/live-clouds';
 import { createCloudLayer } from '@/lib/live-clouds-layer';
-import { attachOsi, type OsiGlobe, type OsiHover } from '@/lib/osi/globe';
+import { attachOi, type OiGlobe, type OiHover } from '@/lib/oi/globe';
 import { createSatelliteLayer, parseColor, SAT_MAX_ZOOM, type SatPoint } from '@/lib/satellite-layer';
 import { MAP_DEFAULTS, MAP_PALETTE_KEYS, readMapPalette, satColorFor, type MapPalette } from '@/lib/map-palette';
 import { STYLE_EVENT } from '@/lib/style-tokens';
@@ -91,14 +91,14 @@ interface OsirisMapProps {
   navigating?: boolean;
   /** Corroborated endpoint airports for watched aircraft, keyed by icao24. */
   aircraftAirports?: Record<string, Array<{ icao: string; iata?: string; city?: string; lat: number; lng: number }>>;
-  /** Hands the page OSI's globe layer, so a run draws without re-rendering the map. Null when it goes. */
-  onOsiGlobe?: (globe: OsiGlobe | null) => void;
-  /** A piece of OSI's analysis was clicked: an arc ("link:<id>") or a point ("g:<panelist>", "a:<actor>"…); null for empty map. */
-  onOsiSelect?: (key: string | null) => void;
-  /** The pointer is over a piece of OSI's analysis, or has left it. */
-  onOsiHover?: (hover: OsiHover | null) => void;
-  /** OSI's camera started or stopped following the run. */
-  onOsiFollow?: (following: boolean) => void;
+  /** Hands the page OI's globe layer, so a run draws without re-rendering the map. Null when it goes. */
+  onOiGlobe?: (globe: OiGlobe | null) => void;
+  /** A piece of OI's analysis was clicked: an arc ("link:<id>") or a point ("g:<panelist>", "a:<actor>"…); null for empty map. */
+  onOiSelect?: (key: string | null) => void;
+  /** The pointer is over a piece of OI's analysis, or has left it. */
+  onOiHover?: (hover: OiHover | null) => void;
+  /** OI's camera started or stopped following the run. */
+  onOiFollow?: (following: boolean) => void;
 }
 
 function computeSolarTerminator(): [number, number][] {
@@ -176,7 +176,7 @@ interface AlertPinFeature {
   properties: AlertPinProps;
 }
 
-function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, onReady, flyToLocation, alertPinIds = null, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, theme = 'core', drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {}, onOsiGlobe, onOsiSelect, onOsiHover, onOsiFollow }: OsirisMapProps) {
+function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, onReady, flyToLocation, alertPinIds = null, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, theme = 'core', drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {}, onOiGlobe, onOiSelect, onOiHover, onOiFollow }: OsirisMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -204,17 +204,17 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
   const prevArcgisLayersRef = useRef<string[]>([]);
   const satLayerRef = useRef<ReturnType<typeof createSatelliteLayer> | null>(null);
   const cloudLayerRef = useRef<ReturnType<typeof createCloudLayer> | null>(null);
-  const onOsiGlobeRef = useRef(onOsiGlobe);
-  const onOsiSelectRef = useRef(onOsiSelect);
-  const onOsiHoverRef = useRef(onOsiHover);
-  const onOsiFollowRef = useRef(onOsiFollow);
-  const osiGlobeRef = useRef<OsiGlobe | null>(null);
+  const onOiGlobeRef = useRef(onOiGlobe);
+  const onOiSelectRef = useRef(onOiSelect);
+  const onOiHoverRef = useRef(onOiHover);
+  const onOiFollowRef = useRef(onOiFollow);
+  const oiGlobeRef = useRef<OiGlobe | null>(null);
   useEffect(() => {
-    onOsiGlobeRef.current = onOsiGlobe;
-    onOsiSelectRef.current = onOsiSelect;
-    onOsiHoverRef.current = onOsiHover;
-    onOsiFollowRef.current = onOsiFollow;
-  }, [onOsiGlobe, onOsiSelect, onOsiHover, onOsiFollow]);
+    onOiGlobeRef.current = onOiGlobe;
+    onOiSelectRef.current = onOiSelect;
+    onOiHoverRef.current = onOiHover;
+    onOiFollowRef.current = onOiFollow;
+  }, [onOiGlobe, onOiSelect, onOiHover, onOiFollow]);
   // pick() returns an index into the array last handed to setPoints, so the
   // matching catalogue rows are kept in the same order to resolve it.
   const satRowsRef = useRef<SatelliteRow[]>([]);
@@ -1163,8 +1163,8 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       // made this bail out every single time.
       const hits = map.queryRenderedFeatures(e.point);
       if (hits.some(f => f.layer?.id && CLICKABLE_LAYERS.has(f.layer.id))) return;
-      // An OSI arc or point is picked on the GPU too, and it is in front: the click is OSI's.
-      if (osiGlobeRef.current?.hit(e.point)) return;
+      // An OI arc or point is picked on the GPU too, and it is in front: the click is OI's.
+      if (oiGlobeRef.current?.hit(e.point)) return;
       const idx = layer.pick(e.point.x, e.point.y);
       const p = idx == null ? null : satRowsRef.current[idx];
       // Clicking past every satellite is how a selection is dismissed, so an
@@ -1924,10 +1924,10 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       updateMapIcon('plane-grey', palette.flightUnknown, 24);
     }, [mapReady, palette]);
 
-  // OSI's arcs take their three tones from the Style Studio (violet, magenta, indigo unless changed).
+  // OI's arcs take their three tones from the Style Studio (violet, magenta, indigo unless changed).
   useEffect(() => {
-    osiGlobeRef.current?.setColors({ support: palette.osiSupport, oppose: palette.osiOppose, neutral: palette.osiNeutral });
-  }, [palette.osiSupport, palette.osiOppose, palette.osiNeutral]);
+    oiGlobeRef.current?.setColors({ support: palette.oiSupport, oppose: palette.oiOppose, neutral: palette.oiNeutral });
+  }, [palette.oiSupport, palette.oiOppose, palette.oiNeutral]);
 
     /* Cameras are circles and a label, so no image to rebuild — the colour is
        a paint property on each. */
@@ -2714,23 +2714,23 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     return () => clearInterval(refresh);
   }, [mapReady, activeLayers.live_clouds, mapStyle]);
 
-  // OSIRIS OSI — a forecast's analysis drawn as it happens: actors, panelists
-  // and arcs through the sky (see lib/osi/globe). The page feeds it
+  // OSIRIS OI — a forecast's analysis drawn as it happens: actors, panelists
+  // and arcs through the sky (see lib/oi/globe). The page feeds it
   // run state directly, so the map does not re-render on every event; the
   // layer re-adds itself after a style change.
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
-    const globe = attachOsi(mapRef.current, {
-      onSelect: key => onOsiSelectRef.current?.(key),
-      onHover: hover => onOsiHoverRef.current?.(hover),
-      onFollowChange: following => onOsiFollowRef.current?.(following),
+    const globe = attachOi(mapRef.current, {
+      onSelect: key => onOiSelectRef.current?.(key),
+      onHover: hover => onOiHoverRef.current?.(hover),
+      onFollowChange: following => onOiFollowRef.current?.(following),
     });
-    globe.setColors({ support: paletteRef.current.osiSupport, oppose: paletteRef.current.osiOppose, neutral: paletteRef.current.osiNeutral });
-    osiGlobeRef.current = globe;
-    onOsiGlobeRef.current?.(globe);
+    globe.setColors({ support: paletteRef.current.oiSupport, oppose: paletteRef.current.oiOppose, neutral: paletteRef.current.oiNeutral });
+    oiGlobeRef.current = globe;
+    onOiGlobeRef.current?.(globe);
     return () => {
-      osiGlobeRef.current = null;
-      onOsiGlobeRef.current?.(null);
+      oiGlobeRef.current = null;
+      onOiGlobeRef.current?.(null);
       globe.destroy();
     };
   }, [mapReady]);

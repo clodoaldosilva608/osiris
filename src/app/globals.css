@@ -53,9 +53,9 @@
   --map-flight-gov: #ff9500;
   --map-flight-military: #ff0000;
   --map-flight-unknown: #546e7a;
-  --map-osi-support: #b388ff;
-  --map-osi-oppose: #ff5ccb;
-  --map-osi-neutral: #8c7cff;
+  --map-oi-support: #b388ff;
+  --map-oi-oppose: #ff5ccb;
+  --map-oi-neutral: #8c7cff;
 
   /* ── Borders ── */
   --border-primary: rgba(var(--gold-rgb), 0.15);
@@ -2493,24 +2493,24 @@ input[type="range"]::-moz-range-thumb {
   padding: 1px 5px;
 }
 
-/* OSI's theatre takes the whole screen: the app's own HUD steps back until it closes. */
-html[data-osi-theater] [data-hud],
-html[data-osi-theater] [data-map-controls] {
+/* OI's theatre takes the whole screen: the app's own HUD steps back until it closes. */
+html[data-oi-theater] [data-hud],
+html[data-oi-theater] [data-map-controls] {
   opacity: 0 !important;
   pointer-events: none !important;
   transition: opacity 0.3s ease;
 }
 
-/* OSI's research graph: marks fade in as the run finds them, "weighing" edges march toward
+/* OI's research graph: marks fade in as the run finds them, "weighing" edges march toward
    the actor, a thinking panelist pings. Fading stroke-opacity leaves opacity to the dimming. */
-@keyframes osi-graph-in { from { opacity: 0; } to { opacity: 1; } }
-@keyframes osi-edge-in { from { stroke-opacity: 0; } to { stroke-opacity: 1; } }
-@keyframes osi-graph-march { to { stroke-dashoffset: -16; } }
-@keyframes osi-graph-ping { from { transform: scale(0.75); opacity: 0.9; } to { transform: scale(1.6); opacity: 0; } }
-g.osi-graph-in { animation: osi-graph-in 0.7s ease-out both; }
-path.osi-graph-in { animation: osi-edge-in 0.9s ease-out both; }
-path.osi-graph-in.osi-graph-march { animation: osi-edge-in 0.9s ease-out both, osi-graph-march 1.1s linear infinite; }
-.osi-graph-ping { transform-box: fill-box; transform-origin: center; animation: osi-graph-ping 1.6s ease-out infinite; }
+@keyframes oi-graph-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes oi-edge-in { from { stroke-opacity: 0; } to { stroke-opacity: 1; } }
+@keyframes oi-graph-march { to { stroke-dashoffset: -16; } }
+@keyframes oi-graph-ping { from { transform: scale(0.75); opacity: 0.9; } to { transform: scale(1.6); opacity: 0; } }
+g.oi-graph-in { animation: oi-graph-in 0.7s ease-out both; }
+path.oi-graph-in { animation: oi-edge-in 0.9s ease-out both; }
+path.oi-graph-in.oi-graph-march { animation: oi-edge-in 0.9s ease-out both, oi-graph-march 1.1s linear infinite; }
+.oi-graph-ping { transform-box: fill-box; transform-origin: center; animation: oi-graph-ping 1.6s ease-out infinite; }
 @media (prefers-reduced-motion: reduce) {
-  path.osi-graph-in.osi-graph-march, .osi-graph-ping { animation: none; }
+  path.oi-graph-in.oi-graph-march, .oi-graph-ping { animation: none; }
 }

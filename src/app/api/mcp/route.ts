@@ -1,8 +1,8 @@
 import { getClientIp } from '@/lib/ssrf-guard';
 import {
   ERR, PROTOCOL_VERSIONS, expectsNoReply, handleMessage, isLongCall, progressToken, type JsonRpcResponse, type McpContext,
-} from '@/lib/osi/mcp';
-import { credentials, disabled, limited, siteOrigin } from '@/lib/osi/service';
+} from '@/lib/oi/mcp';
+import { credentials, disabled, limited, siteOrigin } from '@/lib/oi/service';
 
 /**
  * OSIRIS MCP server — Streamable HTTP, stateless.
@@ -15,8 +15,8 @@ import { credentials, disabled, limited, siteOrigin } from '@/lib/osi/service';
  * it can wait out a whole run. Over plain JSON it waits at most 80 s, under
  * the edge proxy's timeout, and hands back the run id to poll.
  *
- * Model keys come from headers: X-OSI-Provider, X-OSI-Key (or
- * Authorization: Bearer), X-OSI-Model.
+ * Model keys come from headers: X-OI-Provider, X-OI-Key (or
+ * Authorization: Bearer), X-OI-Model.
  */
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -46,7 +46,7 @@ function originAllowed(req: Request): boolean {
     const host = (req.headers.get('x-forwarded-host') || req.headers.get('host') || '').split(',')[0].trim();
     if (o.host === host) return true;
     if (o.hostname === 'localhost' || o.hostname === '127.0.0.1' || o.hostname === '[::1]') return true;
-    const extra = (process.env.OSI_MCP_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
+    const extra = (process.env.OI_MCP_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
     return extra.includes(o.origin);
   } catch {
     return false;
@@ -54,7 +54,7 @@ function originAllowed(req: Request): boolean {
 }
 
 export async function POST(req: Request) {
-  if (disabled()) return rpcResponse({ jsonrpc: '2.0', id: null, error: { code: ERR.internal, message: 'OSI is switched off on this server.' } }, 503);
+  if (disabled()) return rpcResponse({ jsonrpc: '2.0', id: null, error: { code: ERR.internal, message: 'OI is switched off on this server.' } }, 503);
   if (!originAllowed(req)) return rpcResponse({ jsonrpc: '2.0', id: null, error: { code: ERR.invalidRequest, message: 'Origin not allowed.' } }, 403);
 
   const version = req.headers.get('mcp-protocol-version');

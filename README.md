@@ -102,10 +102,10 @@ Osiris is a production-grade OSINT platform that provides situational awareness 
 - **Progressive loading** — data fetched on-demand when layers are activated
 - **Viewport-aware** — only loads relevant data for the visible region
 
-### OSI — swarm forecasting (bring your own key)
+### OI — swarm forecasting (bring your own key)
 Ask a question and a simulated panel of AI forecasters, grounded in the live OSIRIS feeds, debates it over several rounds while the analysis draws itself on the globe as arcs through the sky: actors where they act, relations, evidence, every reply. A report agent then writes a calibrated forecast with drivers, scenarios, signposts and dissent, in the shape the question asks for: a probability for yes or no, a share for each outcome, or an estimate with a range. Click any arc or point to open that piece of the research; the camera follows the run until you take it, and full screen keeps the globe live between the report and the debate. Inject an event mid-run, question any panelist after, share the run by link. Violet arcs mark alignment and agreement, magenta rivalry and dispute, indigo everything between; all three can be changed in the Style Studio. Full screen opens a workspace: the verdict and an execution trace of every step the engine took; the globe, a MiroFish-style research graph, a round-by-round timeline and sortable object tables; an object view for whatever is selected; and a search across the run (Ctrl+K).
 - **Your own key**: OpenAI, Anthropic, Google Gemini, OpenRouter, Groq, DeepSeek, xAI, Mistral or Qwen. Kept in your browser, sent per request in a header, never stored on the server.
-- **REST API** under `/api/osi` with live Server-Sent Events, and an **MCP server** at `/api/mcp` so agents such as Hermes, Claude and Cursor can forecast, steer runs and read OSIRIS intelligence. See [the docs](https://osirisai.live/docs#osi).
+- **REST API** under `/api/oi` with live Server-Sent Events, and an **MCP server** at `/api/mcp` so agents such as Hermes, Claude and Cursor can forecast, steer runs and read OSIRIS intelligence. See [the docs](https://osirisai.live/docs#oi).
 
 ### Texas CCTV
 Public TxDOT ITS snapshots are integrated with the existing camera markers, preview grid and viewer. Use `/api/cctv?region=texas` for Texas only; global and Texas location queries include the same source. District inventories are cached independently, with stale data retained during outages. Availability varies by district and camera; these are refreshing JPEG snapshots, not video streams.
@@ -265,7 +265,7 @@ unrelated sites with no way to find them.
 OSIRIS links every one of them straight through to the operator who runs it, which is
 also how bekijkhet.nu asks to be read.
 
-**OSI** — the method behind OSI follows [MiroFish](https://github.com/666ghj/MiroFish),
+**OI** — the method behind OI follows [MiroFish](https://github.com/666ghj/MiroFish),
 the open-source swarm-intelligence prediction engine: seed a parallel world from real
 material, populate it with agents, let them interact while variables are injected, and
 hand the simulation to a report agent. OSIRIS rebuilds that method natively for its own
