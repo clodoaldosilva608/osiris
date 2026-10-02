@@ -1446,12 +1446,12 @@ export default function Dashboard() {
       {/* ── OSI: what the pointer is over on the globe ── */}
       {osiHover && !isMobile && (
         <div
-          className="fixed z-[950] pointer-events-none max-w-[300px] rounded-xl border border-[#B388FF]/25 bg-[#120D1E]/92 backdrop-blur-xl px-3 py-2 shadow-[0_18px_40px_-12px_rgba(0,0,0,0.8)]"
+          className="fixed z-[950] pointer-events-none max-w-[300px] rounded-lg border border-[var(--border-primary)] bg-[rgba(12,14,26,0.94)] backdrop-blur-xl px-3 py-2 shadow-[0_8px_32px_rgba(0,0,0,0.6)]"
           style={{ left: Math.min(osiHover.x + 14, (typeof window !== 'undefined' ? window.innerWidth : 1920) - 314), top: osiHover.y + 16 }}
         >
-          <div className="text-[12px] font-medium leading-snug text-[#F2EEFA]">{osiHover.title}</div>
-          {osiHover.detail && <div className="mt-0.5 text-[11px] leading-snug text-[#B7B0C9]">{osiHover.detail}</div>}
-          <div className="mt-1.5 text-[10px] text-[#B388FF]/80">Click to open</div>
+          <div className="text-[11.5px] font-medium leading-snug text-[var(--text-heading)]">{osiHover.title}</div>
+          {osiHover.detail && <div className="mt-0.5 text-[10.5px] leading-snug text-[var(--text-secondary)]">{osiHover.detail}</div>}
+          <div className="mt-1 text-[8.5px] font-mono tracking-[0.18em] text-[var(--gold-primary)]">CLICK TO OPEN</div>
         </div>
       )}
 
@@ -1631,15 +1631,15 @@ export default function Dashboard() {
       {/* ── RIGHT TOOL STRIP (desktop only — mobile uses bottom nav) ── */}
       {!isMobile && <motion.div data-hud initial={{ opacity: 0, x: 12 }} animate={revealed ? { opacity: 1, x: 0 } : { opacity: 0, x: 12 }} transition={hudIn(0.3)} className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-[250] pointer-events-auto bg-black/40 backdrop-blur-sm p-1 rounded-full border border-white/5">
         <div ref={osiAnchor} className="relative group">
-          <button onClick={() => { setShowOsi(!showOsi); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowSpaceCam(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showOsi ? 'bg-[#B388FF]/20' : 'hover:bg-white/10'}`} title="OSI — swarm forecasting on live intelligence, with your own AI key" aria-label="OSI" aria-expanded={showOsi}>
-            <Orbit className={`w-4 h-4 ${showOsi ? 'text-[#B388FF]' : 'text-white/60'}`} />
+          <button onClick={() => { setShowOsi(!showOsi); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowSpaceCam(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showOsi ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`} title="OSI — swarm forecasting on live intelligence, with your own AI key" aria-label="OSI" aria-expanded={showOsi}>
+            <Orbit className={`w-4 h-4 ${showOsi ? 'text-[var(--gold-primary)]' : 'text-white/60'}`} />
             {showOsi && (
               <span
                 aria-hidden="true"
-                className="absolute -right-1 top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-full bg-current text-[#B388FF]"
+                className="absolute -right-1 top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-full bg-current text-[var(--gold-primary)]"
               />
             )}
-            {osi.state?.status === 'running' && <span aria-hidden="true" className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-[#FF5CCB] animate-pulse" />}
+            {osi.state?.status === 'running' && <span aria-hidden="true" className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-[var(--alert-green)] animate-pulse" />}
           </button>
           <span className="absolute right-11 top-1/2 -translate-y-1/2 px-2 py-1 text-[9px] font-mono tracking-wider text-white/80 bg-black/80 backdrop-blur-sm rounded whitespace-nowrap opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none">OSI</span>
           <AnimatePresence>
@@ -2005,7 +2005,7 @@ export default function Dashboard() {
                 initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
                 transition={{ type: 'spring', damping: 30, stiffness: 300 }}
                 className="fixed bottom-[52px] left-0 right-0 z-[400] glass-panel rounded-b-none overflow-y-auto styled-scrollbar"
-                style={{ maxHeight: 'min(55vh, calc(100dvh - 100px))', paddingBottom: 'env(safe-area-inset-bottom, 4px)', ...(mobilePanel === 'osi' ? { background: 'linear-gradient(180deg, rgba(22,16,36,0.97) 0%, rgba(11,9,19,0.98) 100%)', borderColor: 'rgba(179,136,255,0.16)' } : {}) }}
+                style={{ maxHeight: 'min(55vh, calc(100dvh - 100px))', paddingBottom: 'env(safe-area-inset-bottom, 4px)' }}
               >
                 <div className="mobile-drawer-handle" />
                 <div className="px-3 pb-3">
