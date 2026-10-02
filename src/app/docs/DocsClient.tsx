@@ -13,7 +13,7 @@ const GUIDE_SECTIONS = [
   { id: 'self-hosting', title: 'Self-Hosting' },
   { id: 'configuration', title: 'Configuration' },
   { id: 'interface', title: 'Interface Guide' },
-  { id: 'oracle', title: 'Oracle & MCP' },
+  { id: 'oai', title: 'OAI & MCP' },
   { id: 'shortcuts', title: 'Keyboard Shortcuts' },
 ];
 
@@ -486,9 +486,9 @@ docker compose up -d`}</Pre>
             </div>
           </Section>
 
-          <Section id="oracle" eyebrow="Guide" title="Oracle & MCP">
+          <Section id="oai" eyebrow="Guide" title="OAI & MCP">
             <p>
-              The Oracle is OSIRIS&apos;s prediction engine. Ask it a question and it builds a world model from the
+              OAI is OSIRIS&apos;s prediction engine. Ask it a question and it builds a world model from the
               live feeds (the actors, where they are, how they relate), assembles a deliberately diverse panel of
               simulated forecasters, and lets them debate over several rounds: each one posts a probability, replies to
               the others, and updates. A report agent then writes a calibrated forecast with its drivers, scenarios,
@@ -499,7 +499,7 @@ docker compose up -d`}</Pre>
               {[
                 { k: 'Your own key', v: 'OpenAI, Anthropic, Google Gemini, OpenRouter, Groq, DeepSeek, xAI, Mistral or Qwen. The key stays in your browser and travels in a header with your requests; the server uses it for your run and never stores or logs it.' },
                 { k: 'Cost', v: 'Quick: 6 agents × 2 rounds, about 15 model calls. Standard: 10 × 3, about 33. Deep: 16 × 4, about 67. Billed by your provider at its own rates.' },
-                { k: 'Sharing', v: 'Every run has a link, /?oracle=<id>, that replays the whole analysis on the globe for anyone who opens it. Runs are kept for three hours after they finish.' },
+                { k: 'Sharing', v: 'Every run has a link, /?oai=<id>, that replays the whole analysis on the globe for anyone who opens it. Runs are kept for three hours after they finish.' },
                 { k: 'Steering', v: 'Whoever started a run holds its token: they alone can inject events into it or stop it. Anyone with a key can question the panel.' },
               ].map(row => (
                 <div key={row.k} className="rounded-xl border border-white/[0.07] bg-white/[0.015] p-3.5">
@@ -517,25 +517,25 @@ docker compose up -d`}</Pre>
                   label: 'cURL',
                   lang: 'bash',
                   code: `# Start: answers 202 with the run id, a watch link and a run token
-curl -s -X POST ${origin}/api/oracle/runs \\
+curl -s -X POST ${origin}/api/oai/runs \\
   -H "Content-Type: application/json" \\
-  -H "X-Oracle-Provider: openai" \\
-  -H "X-Oracle-Key: $OPENAI_API_KEY" \\
+  -H "X-OAI-Provider: openai" \\
+  -H "X-OAI-Key: $OPENAI_API_KEY" \\
   -d '{"question": "Will the Fed cut rates at its next meeting?", "depth": "quick"}'
 
 # Wait up to 55 s for the forecast (repeat until status is "done")
-curl -s "${origin}/api/oracle/runs/RUN_ID?wait=55"
+curl -s "${origin}/api/oai/runs/RUN_ID?wait=55"
 
 # Or watch it happen
-curl -N ${origin}/api/oracle/runs/RUN_ID/events`,
+curl -N ${origin}/api/oai/runs/RUN_ID/events`,
                 },
               ]}
             />
 
             <p>
               The same engine is an MCP server at <Code>{`${origin}/api/mcp`}</Code> (Streamable HTTP). Give an agent the
-              tools <Code>oracle_predict</Code>, <Code>oracle_get_run</Code>, <Code>oracle_ask</Code>,{' '}
-              <Code>oracle_inject</Code> and <Code>oracle_cancel</Code>, plus <Code>osiris_world_brief</Code> and{' '}
+              tools <Code>oai_predict</Code>, <Code>oai_get_run</Code>, <Code>oai_ask</Code>,{' '}
+              <Code>oai_inject</Code> and <Code>oai_cancel</Code>, plus <Code>osiris_world_brief</Code> and{' '}
               <Code>osiris_markets</Code>, which are free and need no key. The model key is set once on the connection, as
               headers, so it never appears in the agent&apos;s conversation.
             </p>
@@ -550,17 +550,17 @@ mcp_servers:
   osiris:
     url: "${origin}/api/mcp"
     headers:
-      X-Oracle-Provider: "anthropic"
-      X-Oracle-Key: "sk-ant-..."
-      X-Oracle-Model: "claude-haiku-4-5-20251001"
+      X-OAI-Provider: "anthropic"
+      X-OAI-Key: "sk-ant-..."
+      X-OAI-Model: "claude-haiku-4-5-20251001"
     timeout: 300`,
                 },
                 {
                   label: 'Claude Code',
                   lang: 'bash',
                   code: `claude mcp add --transport http osiris ${origin}/api/mcp \\
-  --header "X-Oracle-Provider: openai" \\
-  --header "X-Oracle-Key: $OPENAI_API_KEY"`,
+  --header "X-OAI-Provider: openai" \\
+  --header "X-OAI-Key: $OPENAI_API_KEY"`,
                 },
                 {
                   label: 'Cursor / JSON',
@@ -570,8 +570,8 @@ mcp_servers:
     "osiris": {
       "url": "${origin}/api/mcp",
       "headers": {
-        "X-Oracle-Provider": "google",
-        "X-Oracle-Key": "AIza..."
+        "X-OAI-Provider": "google",
+        "X-OAI-Key": "AIza..."
       }
     }
   }
@@ -580,9 +580,9 @@ mcp_servers:
               ]}
             />
             <Callout tone="info" title="How long a forecast takes">
-              One to five minutes, depending on depth and provider. <Code>oracle_predict</Code> waits for it when the
+              One to five minutes, depending on depth and provider. <Code>oai_predict</Code> waits for it when the
               client accepts a streamed response, sending progress as each phase and round completes. Over plain JSON it
-              waits about 80 seconds, then returns the run id to poll with <Code>oracle_get_run</Code> and{' '}
+              waits about 80 seconds, then returns the run id to poll with <Code>oai_get_run</Code> and{' '}
               <Code>wait_seconds</Code>.
             </Callout>
             <p className="text-[12px] text-[var(--text-muted)]">
@@ -630,8 +630,8 @@ mcp_servers:
             <p>
               All routes live under <Code>/api</Code> on whatever origin serves the application. Reads are{' '}
               <Code>GET</Code>, writes are <Code>POST</Code> with a JSON body. Nothing requires authentication except{' '}
-              <Code>/api/sdk/ingest</Code> and <Code>/api/github-webhook</Code>. The Oracle runs on a model key you bring,
-              sent in the <Code>X-Oracle-Key</Code> header.
+              <Code>/api/sdk/ingest</Code> and <Code>/api/github-webhook</Code>. OAI runs on a model key you bring,
+              sent in the <Code>X-OAI-Key</Code> header.
             </p>
             <div className="space-y-2.5">
               {[

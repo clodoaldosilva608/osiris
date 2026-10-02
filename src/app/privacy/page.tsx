@@ -14,7 +14,7 @@ export const metadata: Metadata = {
  *
  * Reviewed 2026-10-02 against: src/app/api/geo, src/app/api/osint/*,
  * src/app/api/ai/*, src/app/page.tsx, src/components/LiveAlerts.tsx,
- * src/components/DonBotScan.tsx, src/lib/live-clouds.ts, src/lib/oracle/*.
+ * src/components/DonBotScan.tsx, src/lib/live-clouds.ts, src/lib/oai/*.
  */
 
 const SERVICES: { service: string; sent: string; when: string }[] = [
@@ -29,7 +29,7 @@ const SERVICES: { service: string; sent: string; when: string }[] = [
   { service: 'Telegram (cdn*.telesco.pe)', sent: 'Your IP address, as with any image request', when: 'When you expand a Live Alert that has a photo or video preview' },
   { service: 'NOAA nowCOAST (nowcoast.noaa.gov)', sent: 'Your IP address and the part of the map in view, as with any map tile', when: 'Only while the Live Clouds layer is switched on' },
   { service: 'DigitalDon (widget.digitaldon.net)', sent: 'The token you search, and your IP address, as with any page you open. No referrer or site name is sent', when: 'Only when you run a DonBot token scan, in Markets → Crypto or RECON → DonBot. Its page runs sealed in its own frame, and counts its own usage there' },
-  { service: 'The AI provider you choose for the Oracle (OpenAI, Anthropic, Google, OpenRouter, Groq, DeepSeek, xAI, Mistral or Alibaba Cloud)', sent: 'Your API key, your question and any material you add, with the OSIRIS headlines picked for it. Sent from the OSIRIS server, not your browser, so the provider sees our address, not yours', when: 'Only when you run an Oracle forecast, check a key, or question the panel, on the key you supplied' },
+  { service: 'The AI provider you choose for OAI (OpenAI, Anthropic, Google, OpenRouter, Groq, DeepSeek, xAI, Mistral or Alibaba Cloud)', sent: 'Your API key, your question and any material you add, with the OSIRIS headlines picked for it. Sent from the OSIRIS server, not your browser, so the provider sees our address, not yours', when: 'Only when you run an OAI forecast, check a key, or question the panel, on the key you supplied' },
 ];
 
 export default function PrivacyPage() {
@@ -110,7 +110,7 @@ export default function PrivacyPage() {
             claims inside still need checking against the underlying feeds.
           </p>
           <p className="mt-3 text-sm leading-relaxed text-[var(--text-muted)]">
-            The Oracle runs on your own key. It stays in your browser (only this tab, unless you ask
+            OAI runs on your own key. It stays in your browser (only this tab, unless you ask
             to be remembered on the device) and goes to OSIRIS in a request header when you start a
             run, check a key or question the panel. The server passes it to the provider you chose
             for that request and holds it only while your run is going: it is not written to disk,
