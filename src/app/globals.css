@@ -53,7 +53,7 @@
   --map-flight-gov: #ff9500;
   --map-flight-military: #ff0000;
   --map-flight-unknown: #546e7a;
-  --map-oai: #ffffff;
+  --map-osi: #ffffff;
 
   /* ── Borders ── */
   --border-primary: rgba(var(--gold-rgb), 0.15);
@@ -2491,9 +2491,9 @@ input[type="range"]::-moz-range-thumb {
   padding: 1px 5px;
 }
 
-/* OAI's theatre takes the whole screen: the app's own HUD steps back until it closes. */
-html[data-oai-theater] [data-hud],
-html[data-oai-theater] [data-map-controls] {
+/* OSI's theatre takes the whole screen: the app's own HUD steps back until it closes. */
+html[data-osi-theater] [data-hud],
+html[data-osi-theater] [data-map-controls] {
   opacity: 0 !important;
   pointer-events: none !important;
   transition: opacity 0.3s ease;

@@ -13,7 +13,7 @@ const GUIDE_SECTIONS = [
   { id: 'self-hosting', title: 'Self-Hosting' },
   { id: 'configuration', title: 'Configuration' },
   { id: 'interface', title: 'Interface Guide' },
-  { id: 'oai', title: 'OAI & MCP' },
+  { id: 'osi', title: 'OSI & MCP' },
   { id: 'shortcuts', title: 'Keyboard Shortcuts' },
 ];
 
@@ -486,9 +486,9 @@ docker compose up -d`}</Pre>
             </div>
           </Section>
 
-          <Section id="oai" eyebrow="Guide" title="OAI & MCP">
+          <Section id="osi" eyebrow="Guide" title="OSI & MCP">
             <p>
-              OAI is OSIRIS&apos;s prediction engine. Ask it a question and it builds a world model from the
+              OSI is OSIRIS&apos;s prediction engine. Ask it a question and it builds a world model from the
               live feeds (the actors, where they are, how they relate), assembles a deliberately diverse panel of
               simulated forecasters, and lets them debate over several rounds: each one gives a view, replies to the
               others, and updates. A report agent then writes a calibrated forecast with its drivers, scenarios,
@@ -502,9 +502,9 @@ docker compose up -d`}</Pre>
               {[
                 { k: 'Your own key', v: 'OpenAI, Anthropic, Google Gemini, OpenRouter, Groq, DeepSeek, xAI, Mistral or Qwen. The key stays in your browser and travels in a header with your requests; the server uses it for your run and never stores or logs it.' },
                 { k: 'Cost', v: 'Quick: 6 agents × 2 rounds, about 15 model calls. Standard: 10 × 3, about 33. Deep: 16 × 4, about 67. Billed by your provider at its own rates.' },
-                { k: 'Sharing', v: 'Every run has a link, /?oai=<id>, that replays the whole analysis on the globe for anyone who opens it. Runs are kept for three hours after they finish.' },
+                { k: 'Sharing', v: 'Every run has a link, /?osi=<id>, that replays the whole analysis on the globe for anyone who opens it. Runs are kept for three hours after they finish.' },
                 { k: 'Steering', v: 'Whoever started a run holds its token: they alone can inject events into it or stop it. Anyone with a key can question the panel.' },
-                { k: 'On the globe', v: 'Solid arcs are alignments and agreements, dashed are rivalries and disputes, dotted are evidence from the feeds, moving dashes are a panelist weighing an actor. Their colour is yours to set in the Style Studio (Map layers → OAI). Full screen keeps the globe live between the report and the debate.' },
+                { k: 'On the globe', v: 'Solid arcs are alignments and agreements, dashed are rivalries and disputes, dotted are evidence from the feeds, moving dashes are a panelist weighing an actor. Their colour is yours to set in the Style Studio (Map layers → OSI). Full screen keeps the globe live between the report and the debate.' },
                 { k: 'Answers', v: 'Every run says what kind it is (binary, choice or number) and gives its answer in words, e.g. "62% YES", "Hold (55%)" or "86.4 USD per barrel (80–92)", alongside the figures.' },
               ].map(row => (
                 <div key={row.k} className="rounded-xl border border-white/[0.07] bg-white/[0.015] p-3.5">
@@ -522,25 +522,25 @@ docker compose up -d`}</Pre>
                   label: 'cURL',
                   lang: 'bash',
                   code: `# Start: answers 202 with the run id, a watch link and a run token
-curl -s -X POST ${origin}/api/oai/runs \\
+curl -s -X POST ${origin}/api/osi/runs \\
   -H "Content-Type: application/json" \\
-  -H "X-OAI-Provider: openai" \\
-  -H "X-OAI-Key: $OPENAI_API_KEY" \\
+  -H "X-OSI-Provider: openai" \\
+  -H "X-OSI-Key: $OPENAI_API_KEY" \\
   -d '{"question": "Will the Fed cut rates at its next meeting?", "depth": "quick"}'
 
 # Wait up to 55 s for the forecast (repeat until status is "done")
-curl -s "${origin}/api/oai/runs/RUN_ID?wait=55"
+curl -s "${origin}/api/osi/runs/RUN_ID?wait=55"
 
 # Or watch it happen
-curl -N ${origin}/api/oai/runs/RUN_ID/events`,
+curl -N ${origin}/api/osi/runs/RUN_ID/events`,
                 },
               ]}
             />
 
             <p>
               The same engine is an MCP server at <Code>{`${origin}/api/mcp`}</Code> (Streamable HTTP). Give an agent the
-              tools <Code>oai_predict</Code>, <Code>oai_get_run</Code>, <Code>oai_ask</Code>,{' '}
-              <Code>oai_inject</Code> and <Code>oai_cancel</Code>, plus <Code>osiris_world_brief</Code> and{' '}
+              tools <Code>osi_predict</Code>, <Code>osi_get_run</Code>, <Code>osi_ask</Code>,{' '}
+              <Code>osi_inject</Code> and <Code>osi_cancel</Code>, plus <Code>osiris_world_brief</Code> and{' '}
               <Code>osiris_markets</Code>, which are free and need no key. The model key is set once on the connection, as
               headers, so it never appears in the agent&apos;s conversation.
             </p>
@@ -555,17 +555,17 @@ mcp_servers:
   osiris:
     url: "${origin}/api/mcp"
     headers:
-      X-OAI-Provider: "anthropic"
-      X-OAI-Key: "sk-ant-..."
-      X-OAI-Model: "claude-haiku-4-5-20251001"
+      X-OSI-Provider: "anthropic"
+      X-OSI-Key: "sk-ant-..."
+      X-OSI-Model: "claude-haiku-4-5-20251001"
     timeout: 300`,
                 },
                 {
                   label: 'Claude Code',
                   lang: 'bash',
                   code: `claude mcp add --transport http osiris ${origin}/api/mcp \\
-  --header "X-OAI-Provider: openai" \\
-  --header "X-OAI-Key: $OPENAI_API_KEY"`,
+  --header "X-OSI-Provider: openai" \\
+  --header "X-OSI-Key: $OPENAI_API_KEY"`,
                 },
                 {
                   label: 'Cursor / JSON',
@@ -575,8 +575,8 @@ mcp_servers:
     "osiris": {
       "url": "${origin}/api/mcp",
       "headers": {
-        "X-OAI-Provider": "google",
-        "X-OAI-Key": "AIza..."
+        "X-OSI-Provider": "google",
+        "X-OSI-Key": "AIza..."
       }
     }
   }
@@ -585,9 +585,9 @@ mcp_servers:
               ]}
             />
             <Callout tone="info" title="How long a forecast takes">
-              One to five minutes, depending on depth and provider. <Code>oai_predict</Code> waits for it when the
+              One to five minutes, depending on depth and provider. <Code>osi_predict</Code> waits for it when the
               client accepts a streamed response, sending progress as each phase and round completes. Over plain JSON it
-              waits about 80 seconds, then returns the run id to poll with <Code>oai_get_run</Code> and{' '}
+              waits about 80 seconds, then returns the run id to poll with <Code>osi_get_run</Code> and{' '}
               <Code>wait_seconds</Code>.
             </Callout>
             <p className="text-[12px] text-[var(--text-muted)]">
@@ -635,8 +635,8 @@ mcp_servers:
             <p>
               All routes live under <Code>/api</Code> on whatever origin serves the application. Reads are{' '}
               <Code>GET</Code>, writes are <Code>POST</Code> with a JSON body. Nothing requires authentication except{' '}
-              <Code>/api/sdk/ingest</Code> and <Code>/api/github-webhook</Code>. OAI runs on a model key you bring,
-              sent in the <Code>X-OAI-Key</Code> header.
+              <Code>/api/sdk/ingest</Code> and <Code>/api/github-webhook</Code>. OSI runs on a model key you bring,
+              sent in the <Code>X-OSI-Key</Code> header.
             </p>
             <div className="space-y-2.5">
               {[

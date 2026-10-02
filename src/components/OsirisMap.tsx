@@ -6,7 +6,7 @@ import * as maplibregl from 'maplibre-gl';
 import { installTerrainTileProtocol } from '@/lib/terrain-tiles';
 import { CLOUDS_ATTRIBUTION, CLOUDS_CREDIT, CLOUDS_LAYER, frameTime } from '@/lib/live-clouds';
 import { createCloudLayer } from '@/lib/live-clouds-layer';
-import { attachOai, type OaiGlobe, type OaiHover } from '@/lib/oai/globe';
+import { attachOsi, type OsiGlobe, type OsiHover } from '@/lib/osi/globe';
 import { createSatelliteLayer, parseColor, SAT_MAX_ZOOM, type SatPoint } from '@/lib/satellite-layer';
 import { MAP_DEFAULTS, MAP_PALETTE_KEYS, readMapPalette, satColorFor, type MapPalette } from '@/lib/map-palette';
 import { STYLE_EVENT } from '@/lib/style-tokens';
@@ -91,14 +91,14 @@ interface OsirisMapProps {
   navigating?: boolean;
   /** Corroborated endpoint airports for watched aircraft, keyed by icao24. */
   aircraftAirports?: Record<string, Array<{ icao: string; iata?: string; city?: string; lat: number; lng: number }>>;
-  /** Hands the page OAI's globe layer, so a run draws without re-rendering the map. Null when it goes. */
-  onOaiGlobe?: (globe: OaiGlobe | null) => void;
-  /** A piece of OAI's analysis was clicked: an arc ("link:<id>") or a point ("g:<panelist>", "a:<actor>"…); null for empty map. */
-  onOaiSelect?: (key: string | null) => void;
-  /** The pointer is over a piece of OAI's analysis, or has left it. */
-  onOaiHover?: (hover: OaiHover | null) => void;
-  /** OAI's camera started or stopped following the run. */
-  onOaiFollow?: (following: boolean) => void;
+  /** Hands the page OSI's globe layer, so a run draws without re-rendering the map. Null when it goes. */
+  onOsiGlobe?: (globe: OsiGlobe | null) => void;
+  /** A piece of OSI's analysis was clicked: an arc ("link:<id>") or a point ("g:<panelist>", "a:<actor>"…); null for empty map. */
+  onOsiSelect?: (key: string | null) => void;
+  /** The pointer is over a piece of OSI's analysis, or has left it. */
+  onOsiHover?: (hover: OsiHover | null) => void;
+  /** OSI's camera started or stopped following the run. */
+  onOsiFollow?: (following: boolean) => void;
 }
 
 function computeSolarTerminator(): [number, number][] {
@@ -176,7 +176,7 @@ interface AlertPinFeature {
   properties: AlertPinProps;
 }
 
-function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, onReady, flyToLocation, alertPinIds = null, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, theme = 'core', drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {}, onOaiGlobe, onOaiSelect, onOaiHover, onOaiFollow }: OsirisMapProps) {
+function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightClick, onViewStateChange, onReady, flyToLocation, alertPinIds = null, projection = 'globe', terrainEnabled = false, terrainRetry = 0, terrainFocus = 0, onTerrainStatusChange, mapStyle = 'dark', sweepData, scanTargets = [], demoMode = false, theme = 'core', drawnPolygons = [], arcgisLayers = [], drawMode = null, onDrawComplete, onDrawProgress, onDrawCancel, drawCommand = null, onMapCenter, route = null, userLocation = null, followUser = false, onFollowInterrupt, navigating = false, aircraftAirports = {}, onOsiGlobe, onOsiSelect, onOsiHover, onOsiFollow }: OsirisMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const popupRef = useRef<maplibregl.Popup | null>(null);
@@ -204,17 +204,17 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
   const prevArcgisLayersRef = useRef<string[]>([]);
   const satLayerRef = useRef<ReturnType<typeof createSatelliteLayer> | null>(null);
   const cloudLayerRef = useRef<ReturnType<typeof createCloudLayer> | null>(null);
-  const onOaiGlobeRef = useRef(onOaiGlobe);
-  const onOaiSelectRef = useRef(onOaiSelect);
-  const onOaiHoverRef = useRef(onOaiHover);
-  const onOaiFollowRef = useRef(onOaiFollow);
-  const oaiGlobeRef = useRef<OaiGlobe | null>(null);
+  const onOsiGlobeRef = useRef(onOsiGlobe);
+  const onOsiSelectRef = useRef(onOsiSelect);
+  const onOsiHoverRef = useRef(onOsiHover);
+  const onOsiFollowRef = useRef(onOsiFollow);
+  const osiGlobeRef = useRef<OsiGlobe | null>(null);
   useEffect(() => {
-    onOaiGlobeRef.current = onOaiGlobe;
-    onOaiSelectRef.current = onOaiSelect;
-    onOaiHoverRef.current = onOaiHover;
-    onOaiFollowRef.current = onOaiFollow;
-  }, [onOaiGlobe, onOaiSelect, onOaiHover, onOaiFollow]);
+    onOsiGlobeRef.current = onOsiGlobe;
+    onOsiSelectRef.current = onOsiSelect;
+    onOsiHoverRef.current = onOsiHover;
+    onOsiFollowRef.current = onOsiFollow;
+  }, [onOsiGlobe, onOsiSelect, onOsiHover, onOsiFollow]);
   // pick() returns an index into the array last handed to setPoints, so the
   // matching catalogue rows are kept in the same order to resolve it.
   const satRowsRef = useRef<SatelliteRow[]>([]);
@@ -1922,8 +1922,8 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       updateMapIcon('plane-grey', palette.flightUnknown, 24);
     }, [mapReady, palette]);
 
-  // OAI's arcs take their colour from the Style Studio (white unless changed).
-  useEffect(() => { oaiGlobeRef.current?.setColor(palette.oai); }, [palette.oai]);
+  // OSI's arcs take their colour from the Style Studio (white unless changed).
+  useEffect(() => { osiGlobeRef.current?.setColor(palette.osi); }, [palette.osi]);
 
     /* Cameras are circles and a label, so no image to rebuild — the colour is
        a paint property on each. */
@@ -2710,23 +2710,23 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
     return () => clearInterval(refresh);
   }, [mapReady, activeLayers.live_clouds, mapStyle]);
 
-  // OSIRIS OAI — a forecast's analysis drawn as it happens: actors, panelists
-  // and arcs through the sky (see lib/oai/globe). The page feeds it
+  // OSIRIS OSI — a forecast's analysis drawn as it happens: actors, panelists
+  // and arcs through the sky (see lib/osi/globe). The page feeds it
   // run state directly, so the map does not re-render on every event; the
   // layer re-adds itself after a style change.
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
-    const globe = attachOai(mapRef.current, {
-      onSelect: key => onOaiSelectRef.current?.(key),
-      onHover: hover => onOaiHoverRef.current?.(hover),
-      onFollowChange: following => onOaiFollowRef.current?.(following),
+    const globe = attachOsi(mapRef.current, {
+      onSelect: key => onOsiSelectRef.current?.(key),
+      onHover: hover => onOsiHoverRef.current?.(hover),
+      onFollowChange: following => onOsiFollowRef.current?.(following),
     });
-    globe.setColor(paletteRef.current.oai);
-    oaiGlobeRef.current = globe;
-    onOaiGlobeRef.current?.(globe);
+    globe.setColor(paletteRef.current.osi);
+    osiGlobeRef.current = globe;
+    onOsiGlobeRef.current?.(globe);
     return () => {
-      oaiGlobeRef.current = null;
-      onOaiGlobeRef.current?.(null);
+      osiGlobeRef.current = null;
+      onOsiGlobeRef.current?.(null);
       globe.destroy();
     };
   }, [mapReady]);
