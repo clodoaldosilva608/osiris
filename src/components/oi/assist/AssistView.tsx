@@ -11,7 +11,7 @@ import { createElement, useEffect, useRef, useState, type ReactNode } from 'reac
 import { motion } from 'framer-motion';
 import {
   ArrowUp, Compass, Eraser, ExternalLink, Globe2, Layers, List, Loader2, LocateFixed, MapPin, Mic, Navigation, Orbit, PanelRight,
-  RotateCcw, Search, Square, TrendingUp, Volume2, VolumeX, X, type LucideProps,
+  RotateCcw, ScanSearch, Search, Square, TrendingUp, Volume2, VolumeX, X, type LucideProps,
 } from 'lucide-react';
 import type { OiClient } from '@/lib/oi/client';
 import type { ActionView, AssistClient, Entry } from '@/lib/oi/assist/client';
@@ -23,7 +23,7 @@ import { OiMark, Segmented } from '../atoms';
 import { canSpeak, useDictation } from './voice';
 
 const TOOL_ICON: Record<ToolName, typeof Navigation> = {
-  go_to: Navigation, layers: Layers, find: Search, highlight: MapPin, show: List, markets: TrendingUp,
+  go_to: Navigation, layers: Layers, find: Search, scan: ScanSearch, highlight: MapPin, show: List, markets: TrendingUp,
   open: PanelRight, map_view: Globe2, forecast: Orbit, clear: Eraser,
 };
 
@@ -41,6 +41,7 @@ const MODES: { value: Mode; label: string; title: string }[] = [
 const SUGGESTIONS: { group: string; mode: Mode; text: string }[] = [
   { group: 'Navigate', mode: 'navigate', text: 'Take me to the Strait of Hormuz and show the shipping' },
   { group: 'Navigate', mode: 'navigate', text: 'Fly to Kyiv and turn on the war alerts' },
+  { group: 'Research', mode: 'research', text: 'What am I looking at?' },
   { group: 'Research', mode: 'research', text: 'Earthquakes above M5 in the last day' },
   { group: 'Research', mode: 'research', text: 'Military aircraft near the Baltic Sea' },
   { group: 'Research', mode: 'research', text: 'What is happening in Sudan right now?' },
@@ -55,6 +56,7 @@ function describe(a: ActionView): string {
     case 'go_to': return `Fly to ${g('place') || [g('lat'), g('lng')].filter(Boolean).join(', ') || 'a place'}`;
     case 'layers': return `Layers ${[Array.isArray(a.args.on) ? `on: ${(a.args.on as string[]).join(', ')}` : '', Array.isArray(a.args.off) ? `off: ${(a.args.off as string[]).join(', ')}` : ''].filter(Boolean).join(' · ')}`;
     case 'find': return `Find ${g('layer').replace('_', ' ')}${g('text') ? ` “${g('text')}”` : ''}${typeof a.args.near === 'string' ? ` near ${a.args.near}` : ''}`;
+    case 'scan': return 'Scan what is in view';
     case 'highlight': return `Mark ${Array.isArray(a.args.points) ? a.args.points.length : 0} places`;
     case 'show': return `Show ${g('title') || 'a list'}`;
     case 'markets': return `Read ${Array.isArray(a.args.symbols) ? (a.args.symbols as string[]).join(', ') : 'the markets'}`;

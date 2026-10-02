@@ -9,7 +9,7 @@
  * and, where there is something to see, a card for the reader.
  */
 import type { Call, CallResult } from './protocol';
-import { FIND_LAYERS, LAYERS, PANELS, SOURCES, find, frame, loaded, type Entity, type FindLayer, type Point } from './catalog';
+import { FIND_LAYERS, LAYERS, PANELS, SOURCES, find, frame, loaded, scan, type Bounds, type Entity, type FindLayer, type Point } from './catalog';
 
 export interface HighlightPoint { lat: number; lng: number; label: string }
 export interface Highlight {
@@ -24,7 +24,7 @@ export type Depth = 'quick' | 'standard' | 'deep';
 /** What the page lets the assistant do. */
 export interface Site {
   data(): Record<string, unknown>;
-  view(): { lat: number; lng: number; zoom: number; projection: 'globe' | 'mercator'; style: string };
+  view(): { lat: number; lng: number; zoom: number; projection: 'globe' | 'mercator'; style: string; bounds?: Bounds };
   layers(): Record<string, boolean>;
   flyTo(lat: number, lng: number, zoom?: number): void;
   setLayers(on: string[], off: string[]): void;
@@ -37,7 +37,7 @@ export interface Site {
 
 /** Something for the reader to look at in the conversation. */
 export interface Card {
-  kind: 'find' | 'show' | 'markets' | 'forecast' | 'place';
+  kind: 'find' | 'show' | 'markets' | 'forecast' | 'place' | 'scan';
   title: string;
   subtitle?: string;
   items: { label: string; detail?: string; lat?: number; lng?: number; url?: string; value?: string; tone?: 'up' | 'down' }[];
@@ -212,6 +212,25 @@ export async function runCall(call: Call, site: Site, signal?: AbortSignal): Pro
           ...(e.lat !== null && e.lng !== null ? { lat: e.lat, lng: e.lng } : {}), url: e.url,
         })),
       });
+    }
+
+    case 'scan': {
+      const bounds = site.view().bounds;
+      if (!bounds) return fail('scan', 'The map has not said what is in view yet');
+      const wanted = (Array.isArray(a.layers) ? a.layers : []).map(findLayer).filter((l): l is FindLayer => l !== null);
+      const rows = scan(site.data(), bounds, wanted.length ? wanted : undefined);
+      if (!rows.length) return ok('scan', 'Nothing live from the loaded layers is in view', []);
+      const label = (l: FindLayer) => l.replace('_', ' ');
+      return ok('scan', rows.map(r => `${r.count.toLocaleString('en-US')} ${label(r.layer)}`).join(', '),
+        rows.map(r => ({ layer: r.layer, count: r.count, top: r.top.map(row) })),
+        {
+          kind: 'scan', title: 'In view now',
+          items: rows.map(r => ({
+            label: `${r.count.toLocaleString('en-US')} ${label(r.layer)}`,
+            detail: r.top.map(e => e.title).join(' · '),
+            ...(r.top[0]?.lat !== null && r.top[0]?.lng !== null ? { lat: r.top[0].lat!, lng: r.top[0].lng! } : {}),
+          })),
+        });
     }
 
     case 'highlight': {

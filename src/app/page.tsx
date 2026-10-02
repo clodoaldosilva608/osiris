@@ -504,7 +504,7 @@ export default function Dashboard() {
     try { localStorage.setItem('osiris.oi.voice', on ? '1' : '0'); } catch { /* storage blocked */ }
     if (!on && typeof window !== 'undefined') window.speechSynthesis?.cancel();
   }, []);
-  const assistView = useRef<{ lat: number; lng: number; zoom: number; projection: 'globe' | 'mercator'; style: string }>({ lat: 20, lng: 0, zoom: 2.5, projection: 'globe', style: 'dark' });
+  const assistView = useRef<ReturnType<Site['view']>>({ lat: 20, lng: 0, zoom: 2.5, projection: 'globe', style: 'dark' });
   const assistLayers = useRef<Record<string, boolean>>(activeLayers);
   const assistVoice = useRef(oiVoice);
   const assistOi = useRef(oi);
@@ -512,7 +512,7 @@ export default function Dashboard() {
   useEffect(() => { assistVoice.current = oiVoice; }, [oiVoice]);
   useEffect(() => { assistOi.current = oi; });
   useEffect(() => {
-    assistView.current = { lat: mapCenter?.lat ?? 20, lng: mapCenter?.lng ?? 0, zoom: mapView.zoom, projection: mapProjection, style: mapStyle };
+    assistView.current = { lat: mapCenter?.lat ?? 20, lng: mapCenter?.lng ?? 0, zoom: mapView.zoom, projection: mapProjection, style: mapStyle, bounds: mapCenter?.bounds };
   }, [mapCenter, mapView.zoom, mapProjection, mapStyle]);
   /** A panel the assistant asked for, opened the way its own button opens it. */
   const openFromAssist = useCallback((panel: string) => {

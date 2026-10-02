@@ -17,7 +17,7 @@
 import { extractJson } from '../parse';
 import { FIND_LAYERS, LAYERS, PANELS, SOURCES } from './catalog';
 
-export const TOOL_NAMES = ['go_to', 'layers', 'find', 'highlight', 'show', 'markets', 'open', 'map_view', 'forecast', 'clear'] as const;
+export const TOOL_NAMES = ['go_to', 'layers', 'find', 'scan', 'highlight', 'show', 'markets', 'open', 'map_view', 'forecast', 'clear'] as const;
 export type ToolName = typeof TOOL_NAMES[number];
 
 /** What the reader asked OI to concentrate on. Auto lets the model choose. */
@@ -45,7 +45,7 @@ export interface Step { say: string; calls: Call[]; done: boolean }
 /** What is on screen, sent with every step so the model knows where the reader is. */
 export interface AssistContext {
   now: string;
-  view: { lat: number; lng: number; zoom: number; projection: string; style: string };
+  view: { lat: number; lng: number; zoom: number; projection: string; style: string; bounds?: { west: number; south: number; east: number; north: number } };
   layersOn: string[];
   /** How many of each searchable thing the page holds. */
   loaded: Partial<Record<string, number>>;
@@ -70,6 +70,9 @@ layers {on?: string[], off?: string[]}
 find {layer, text?, near?: string | {lat, lng}, radius_km?, min?, within_hours?, sort?: "nearest"|"newest"|"largest", limit?: 1-25, show?: boolean}
   Search live data the map holds. Switches the layer on if it is off. near takes a place name or coordinates (radius default 500 km). min filters on the layer's value. show (default true) marks the results on the map and frames them. Results come back to you. Layers:
 ${finds}
+
+scan {layers?: string[]}
+  Count and summarise everything live in the part of the map in view now, layer by layer, with the biggest few of each. Use it for "what am I looking at", "what is happening here". Results come back to you.
 
 highlight {points: [{lat, lng, label}], area?: {lat, lng, radius_km, label}, frame?: boolean}
   Mark places on the map with labels, and optionally a circle around an area. frame (default true) moves the camera to them.
@@ -138,7 +141,7 @@ function contextBlock(c: AssistContext): string {
   const loaded = Object.entries(c.loaded).filter(([, n]) => (n ?? 0) > 0).map(([k, n]) => `${k} ${n!.toLocaleString('en-US')}`).join(' · ');
   return [
     `Now: ${c.now}`,
-    `Map: centre ${c.view.lat.toFixed(2)}, ${c.view.lng.toFixed(2)} · zoom ${c.view.zoom.toFixed(1)} · ${c.view.projection} · ${c.view.style}`,
+    `Map: centre ${c.view.lat.toFixed(2)}, ${c.view.lng.toFixed(2)} · zoom ${c.view.zoom.toFixed(1)} · ${c.view.projection} · ${c.view.style}${c.view.bounds ? ` · in view lat ${c.view.bounds.south.toFixed(1)}..${c.view.bounds.north.toFixed(1)}, lng ${c.view.bounds.west.toFixed(1)}..${c.view.bounds.east.toFixed(1)}` : ''}`,
     `Layers on: ${c.layersOn.length ? c.layersOn.join(', ') : 'none'}`,
     `Live data held: ${loaded || 'nothing yet'}`,
     c.forecast ? `OI forecast in the panel: "${clip(c.forecast.question, 160)}" (${c.forecast.status}${c.forecast.answer ? `, ${c.forecast.answer}` : ''})` : 'OI forecast in the panel: none',
@@ -249,6 +252,10 @@ const finite = (v: unknown, lo: number, hi: number, fallback: number) => (typeof
 export function sanitizeContext(v: unknown, now = new Date()): AssistContext {
   const r = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
   const view = (r.view && typeof r.view === 'object' ? r.view : {}) as Record<string, unknown>;
+  const b = (view.bounds && typeof view.bounds === 'object' ? view.bounds : null) as Record<string, unknown> | null;
+  const bounds = b && [b.west, b.south, b.east, b.north].every(x => typeof x === 'number' && Number.isFinite(x))
+    ? { west: finite(b.west, -540, 540, -180), south: finite(b.south, -90, 90, -90), east: finite(b.east, -540, 540, 180), north: finite(b.north, -90, 90, 90) }
+    : null;
   const loaded: Record<string, number> = {};
   if (r.loaded && typeof r.loaded === 'object') {
     for (const [k, n] of Object.entries(r.loaded as Record<string, unknown>)) {
@@ -261,6 +268,7 @@ export function sanitizeContext(v: unknown, now = new Date()): AssistContext {
     view: {
       lat: finite(view.lat, -90, 90, 20), lng: finite(view.lng, -180, 180, 0), zoom: finite(view.zoom, 0, 22, 2),
       projection: view.projection === 'mercator' ? 'flat map' : 'globe', style: view.style === 'satellite' ? 'satellite' : 'dark',
+      ...(bounds ? { bounds } : {}),
     },
     layersOn: Array.isArray(r.layersOn) ? r.layersOn.filter((k): k is string => typeof k === 'string' && k in LAYERS).slice(0, 40) : [],
     loaded,

@@ -63,6 +63,7 @@ export function demoAssist(prompt: string): string {
     return json('Starting a forecast. A panel of simulated forecasters will debate it over a few rounds; follow it in the Forecast tab.', [{ tool: 'forecast', args: { question: q.endsWith('?') ? q : `${q}?`, depth: 'quick' } }]);
   }
   if (/\b(clear|reset|remove)\b.*\b(highlights?|marks?|map)\b/.test(t)) return json('Cleared.', [{ tool: 'clear', args: {} }]);
+  if (/what('s| is) (here|in view|on (the|my) screen|happening here)|what am i looking at|\bscan\b/.test(t)) return json('Looking at what is in view.', [{ tool: 'scan', args: {} }], false);
   if (/\bsatellite (view|map|basemap)\b/.test(t)) return json('Switching to the satellite basemap.', [{ tool: 'map_view', args: { style: 'satellite' } }]);
   if (/\bflat map\b|\b2d\b/.test(t)) return json('Switching to the flat map.', [{ tool: 'map_view', args: { projection: 'flat' } }]);
   if (/\b(markets?|stocks?|oil|brent|gold|bitcoin|btc|s&p|nasdaq|prices?)\b/.test(t)) {

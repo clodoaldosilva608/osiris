@@ -248,6 +248,35 @@ export function find(data: Record<string, unknown>, q: FindQuery, now = Date.now
   return { layer: q.layer, total: all.length, matched, items: hits };
 }
 
+/* ───────────── What is in view ───────────── */
+
+export interface Bounds { west: number; south: number; east: number; north: number }
+
+/** Whether a point is in the view, including a view that crosses the antimeridian or wraps the world. */
+export function inBounds(p: Point, b: Bounds): boolean {
+  if (p.lat < b.south || p.lat > b.north) return false;
+  if (b.east - b.west >= 360) return true;
+  const wrap = (x: number) => ((((x + 180) % 360) + 360) % 360) - 180;
+  const w = wrap(b.west), e = wrap(b.east), x = wrap(p.lng);
+  return w <= e ? x >= w && x <= e : x >= w || x <= e;
+}
+
+export interface ScanRow { layer: FindLayer; count: number; top: Entity[] }
+
+/** How much of each live layer is in view, the biggest (or newest) few of each, busiest layer first. */
+export function scan(data: Record<string, unknown>, bounds: Bounds, layers: FindLayer[] = FIND_LAYERS): ScanRow[] {
+  const rows: ScanRow[] = [];
+  for (const layer of layers) {
+    if (!loaded(data, layer)) continue;
+    const inView = entitiesOf(data, layer).filter(e => e.lat !== null && e.lng !== null && inBounds({ lat: e.lat, lng: e.lng }, bounds));
+    if (!inView.length) continue;
+    const byValue = SOURCES[layer].value !== undefined;
+    inView.sort((a, b) => (byValue ? (b.value ?? -Infinity) - (a.value ?? -Infinity) : (b.time ?? -Infinity) - (a.time ?? -Infinity)));
+    rows.push({ layer, count: inView.length, top: inView.slice(0, 3) });
+  }
+  return rows.sort((a, b) => b.count - a.count);
+}
+
 /* ───────────── Layers and panels the assistant may switch ───────────── */
 
 /** Map layers by the page's own keys, with words a model can choose by. */

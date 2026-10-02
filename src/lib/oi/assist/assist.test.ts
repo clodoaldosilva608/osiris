@@ -279,3 +279,24 @@ describe('guarding the reader', () => {
     expect(items.map(e => e.url)).toEqual(['https://t.me/x/1', undefined]);
   });
 });
+
+describe('what is in view', () => {
+  it('knows what is on screen, across the date line and on a wrapped world', async () => {
+    const { inBounds, scan } = await import('./catalog');
+    expect(inBounds({ lat: 35, lng: 139 }, { west: 120, south: 20, east: 150, north: 50 })).toBe(true);
+    expect(inBounds({ lat: 35, lng: 139 }, { west: -10, south: 20, east: 40, north: 50 })).toBe(false);
+    expect(inBounds({ lat: -17, lng: -179 }, { west: 170, south: -30, east: 190, north: 0 })).toBe(true);
+    expect(inBounds({ lat: 0, lng: 0 }, { west: -400, south: -90, east: 400, north: 90 })).toBe(true);
+    const rows = scan(data(), { west: 120, south: 20, east: 150, north: 50 });
+    expect(rows).toEqual([{ layer: 'earthquakes', count: 2, top: [expect.objectContaining({ id: 'c' }), expect.objectContaining({ id: 'a' })] }]);
+  });
+
+  it('scans the view on request, and says so when the map has not reported one', async () => {
+    const { site } = fakeSite({ view: () => ({ lat: 35, lng: 139, zoom: 5, projection: 'globe', style: 'dark', bounds: { west: 120, south: 20, east: 150, north: 50 } }) });
+    const out = await runCall({ tool: 'scan', args: {} }, site);
+    expect(out.result).toMatchObject({ ok: true, summary: '2 earthquakes' });
+    expect(out.card?.items[0]).toMatchObject({ label: '2 earthquakes', lat: 38.3 });
+    expect((await runCall({ tool: 'scan', args: {} }, fakeSite().site)).result.ok).toBe(false);
+    expect(JSON.parse(demoAssist('USER (mode auto): What am I looking at?')).actions).toEqual([{ tool: 'scan', args: {} }]);
+  });
+});
