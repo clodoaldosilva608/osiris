@@ -159,7 +159,7 @@ export function useOracle() {
     source.current?.close();
     source.current = null;
     queue.current = [];
-    if (frame.current) cancelAnimationFrame(frame.current);
+    if (frame.current) clearTimeout(frame.current);
     frame.current = 0;
   }, []);
 
@@ -191,10 +191,18 @@ export function useOracle() {
       queue.current.push(e);
       // The run is over: stop here, or the browser would reconnect when the server closes the stream.
       if (e.t === 'end') { es.close(); if (source.current === es) source.current = null; }
-      // One render per frame, however fast events arrive (a replay sends hundreds at once).
-      if (!frame.current) frame.current = requestAnimationFrame(flush);
+      // One render per short beat, however fast events arrive (a replay sends hundreds at once).
+      // A timer, not an animation frame: frames stop while the tab is hidden, and a run must keep
+      // up when its watcher switches tabs.
+      if (!frame.current) frame.current = window.setTimeout(flush, 60);
     };
-    // A dropped connection reconnects by itself and resumes from the last event it saw.
+    // A dropped connection reconnects by itself and resumes from the last event it saw. One the
+    // server refused outright (too many streams, a run gone) does not: say so rather than sit silent.
+    es.onerror = () => {
+      if (es.readyState !== EventSource.CLOSED || source.current !== es) return;
+      source.current = null;
+      setError('Lost the live stream of this run. Reopen it from your forecasts to catch up.');
+    };
     return true;
   }, [close, flush]);
 
