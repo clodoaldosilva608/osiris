@@ -504,7 +504,7 @@ docker compose up -d`}</Pre>
                 { k: 'Cost', v: 'Quick: 6 agents × 2 rounds, about 15 model calls. Standard: 10 × 3, about 33. Deep: 16 × 4, about 67. Billed by your provider at its own rates.' },
                 { k: 'Sharing', v: 'Every run has a link, /?osi=<id>, that replays the whole analysis on the globe for anyone who opens it. Runs are kept for three hours after they finish.' },
                 { k: 'Steering', v: 'Whoever started a run holds its token: they alone can inject events into it or stop it. Anyone with a key can question the panel.' },
-                { k: 'On the globe', v: 'Solid arcs are alignments and agreements, dashed are rivalries and disputes, dotted are evidence from the feeds, moving dashes are a panelist weighing an actor. Their colour is yours to set in the Style Studio (Map layers → OSI). Full screen keeps the globe live between the report and the debate.' },
+                { k: 'On the globe', v: 'Violet arcs are alignments and agreements, magenta are rivalries and disputes, indigo is everything in between; evidence from the feeds is a paler wash of its tone, and marching dashes are a panelist weighing an actor. All three colours are yours to set in the Style Studio (Map layers → OSI). Full screen keeps the globe live between the report and the debate.' },
                 { k: 'Answers', v: 'Every run says what kind it is (binary, choice or number) and gives its answer in words, e.g. "62% YES", "Hold (55%)" or "86.4 USD per barrel (80–92)", alongside the figures.' },
               ].map(row => (
                 <div key={row.k} className="rounded-xl border border-white/[0.07] bg-white/[0.015] p-3.5">

@@ -53,7 +53,9 @@
   --map-flight-gov: #ff9500;
   --map-flight-military: #ff0000;
   --map-flight-unknown: #546e7a;
-  --map-osi: #ffffff;
+  --map-osi-support: #b388ff;
+  --map-osi-oppose: #ff5ccb;
+  --map-osi-neutral: #8c7cff;
 
   /* ── Borders ── */
   --border-primary: rgba(var(--gold-rgb), 0.15);

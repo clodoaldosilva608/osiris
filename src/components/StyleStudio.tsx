@@ -371,8 +371,10 @@ function StyleStudio({ onClose, isMobile }: { onClose: () => void; isMobile?: bo
           <Row label="Military"><ResettableSwatch label="Military aircraft" value={s.map.flightMilitary} fallback={MAP_DEFAULTS.flightMilitary} onChange={v => setMap('flightMilitary', v)} /></Row>
           <Row label="Unknown"><ResettableSwatch label="Unknown aircraft" value={s.map.flightUnknown} fallback={MAP_DEFAULTS.flightUnknown} onChange={v => setMap('flightUnknown', v)} /></Row>
 
-          <SubHead label="OSI" note="The arcs a forecast draws through the sky, and the actors they join. Line style, not colour, tells relations apart." />
-          <Row label="Arcs"><ResettableSwatch label="OSI arc colour" value={s.map.osi} fallback={MAP_DEFAULTS.osi} onChange={v => setMap('osi', v)} /></Row>
+          <SubHead label="OSI" note="The arcs a forecast draws through the sky." />
+          <Row label="Aligned"><ResettableSwatch label="OSI arcs: aligned or agreeing" value={s.map.osiSupport} fallback={MAP_DEFAULTS.osiSupport} onChange={v => setMap('osiSupport', v)} /></Row>
+          <Row label="Opposed"><ResettableSwatch label="OSI arcs: opposed or disputing" value={s.map.osiOppose} fallback={MAP_DEFAULTS.osiOppose} onChange={v => setMap('osiOppose', v)} /></Row>
+          <Row label="Neutral"><ResettableSwatch label="OSI arcs: neutral, evidence" value={s.map.osiNeutral} fallback={MAP_DEFAULTS.osiNeutral} onChange={v => setMap('osiNeutral', v)} /></Row>
         </Section>
 
         <Section title="Surface">

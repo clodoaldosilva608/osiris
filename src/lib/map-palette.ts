@@ -23,8 +23,10 @@ export interface MapPalette {
   flightGov: string;
   flightMilitary: string;
   flightUnknown: string;
-  /** OSI's arcs and actors on the globe. */
-  osi: string;
+  /** OSI's arcs: aligned or agreeing, opposed or disputing, and the rest. */
+  osiSupport: string;
+  osiOppose: string;
+  osiNeutral: string;
 }
 
 export type MapPaletteKey = keyof MapPalette;
@@ -43,7 +45,9 @@ export const MAP_VARS: Record<MapPaletteKey, string> = {
   flightGov: '--map-flight-gov',
   flightMilitary: '--map-flight-military',
   flightUnknown: '--map-flight-unknown',
-  osi: '--map-osi',
+  osiSupport: '--map-osi-support',
+  osiOppose: '--map-osi-oppose',
+  osiNeutral: '--map-osi-neutral',
 };
 
 /**
@@ -66,7 +70,9 @@ export const MAP_DEFAULTS: MapPalette = {
   flightGov: '#ff9500',
   flightMilitary: '#ff0000',
   flightUnknown: '#546e7a',
-  osi: '#ffffff',
+  osiSupport: '#b388ff',
+  osiOppose: '#ff5ccb',
+  osiNeutral: '#8c7cff',
 };
 
 export const MAP_PALETTE_KEYS = Object.keys(MAP_DEFAULTS) as MapPaletteKey[];

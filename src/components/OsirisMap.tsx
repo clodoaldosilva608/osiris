@@ -1163,6 +1163,8 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       // made this bail out every single time.
       const hits = map.queryRenderedFeatures(e.point);
       if (hits.some(f => f.layer?.id && CLICKABLE_LAYERS.has(f.layer.id))) return;
+      // An OSI arc or point is picked on the GPU too, and it is in front: the click is OSI's.
+      if (osiGlobeRef.current?.hit(e.point)) return;
       const idx = layer.pick(e.point.x, e.point.y);
       const p = idx == null ? null : satRowsRef.current[idx];
       // Clicking past every satellite is how a selection is dismissed, so an
@@ -1922,8 +1924,10 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       updateMapIcon('plane-grey', palette.flightUnknown, 24);
     }, [mapReady, palette]);
 
-  // OSI's arcs take their colour from the Style Studio (white unless changed).
-  useEffect(() => { osiGlobeRef.current?.setColor(palette.osi); }, [palette.osi]);
+  // OSI's arcs take their three tones from the Style Studio (violet, magenta, indigo unless changed).
+  useEffect(() => {
+    osiGlobeRef.current?.setColors({ support: palette.osiSupport, oppose: palette.osiOppose, neutral: palette.osiNeutral });
+  }, [palette.osiSupport, palette.osiOppose, palette.osiNeutral]);
 
     /* Cameras are circles and a label, so no image to rebuild — the colour is
        a paint property on each. */
@@ -2721,7 +2725,7 @@ function OsirisMap({ data, activeLayers, onEntityClick, onMouseCoords, onRightCl
       onHover: hover => onOsiHoverRef.current?.(hover),
       onFollowChange: following => onOsiFollowRef.current?.(following),
     });
-    globe.setColor(paletteRef.current.osi);
+    globe.setColors({ support: paletteRef.current.osiSupport, oppose: paletteRef.current.osiOppose, neutral: paletteRef.current.osiNeutral });
     osiGlobeRef.current = globe;
     onOsiGlobeRef.current?.(globe);
     return () => {

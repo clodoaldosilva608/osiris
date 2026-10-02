@@ -5,8 +5,8 @@
  */
 import type { Estimate, Frame, Post, Report, RoundStat } from './types';
 
-/** Outcome colours for a choice question: distinct on a dark globe and in the panel, none of them a warning red. */
-export const OUTCOME_COLORS = ['#7FB8FF', '#FFB86B', '#8FE3B0', '#E89BFF', '#FFE07A', '#7FE0E8'];
+/** Outcome colours for a choice question: OSI's violet and magenta first, then hues that stay distinct beside them. */
+export const OUTCOME_COLORS = ['#B388FF', '#FF5CCB', '#6E8BFF', '#6FE3C1', '#FFB86B', '#E3DDF2'];
 
 export const outcomeColor = (i: number) => OUTCOME_COLORS[((i % OUTCOME_COLORS.length) + OUTCOME_COLORS.length) % OUTCOME_COLORS.length];
 

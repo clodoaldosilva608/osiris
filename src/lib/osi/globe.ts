@@ -32,19 +32,30 @@ export const OSI_ARCS = 'osi-arcs';
 const NODES = 'osi-nodes';
 const LAYERS = ['osi-node-halo', 'osi-node-core', 'osi-label-actor', 'osi-label-agent', 'osi-label-forecast'] as const;
 
-/** The arcs' colour until the Style Studio says otherwise. */
-export const DEFAULT_ARC_COLOR = '#ffffff';
+/**
+ * OSI's palette: violet where actors align or panelists agree, magenta where
+ * they oppose or dispute, indigo for everything in between. The Style Studio
+ * can change all three (see map-palette); these are the defaults.
+ */
+export interface ToneColors { support: string; oppose: string; neutral: string }
+export const DEFAULT_TONES: ToneColors = { support: '#b388ff', oppose: '#ff5ccb', neutral: '#8c7cff' };
+
+/** A colour lifted toward white: actors read as the brightest points of the web. */
+function lift(hex: string, amount: number): string {
+  const [r, g, b] = rgb(hex).map(v => Math.round((v + (1 - v) * amount) * 255));
+  return `#${[r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')}`;
+}
 
 const KIND: Record<Link['kind'], number> = { relation: 0, evidence: 1, reply: 2, focus: 3 };
 const TONE: Record<Link['tone'], number> = { support: 0, oppose: 1, neutral: 2 };
 
 /* ───────────────────────────── Colours ───────────────────────────── */
 
-const LEAN_STOPS: [number, number, number][] = [[0x6a, 0xa6, 0xff], [0xdc, 0xd8, 0xe6], [0xff, 0x9c, 0x5b]];
+const LEAN_STOPS: [number, number, number][] = [[0x6e, 0x8b, 0xff], [0xb3, 0x88, 0xff], [0xff, 0x5c, 0xcb]];
 
-/** A diverging scale: cool toward NO (or lower), warm toward YES (or higher), pale between. */
+/** OSI's lean: indigo toward NO (or lower), magenta toward YES (or higher), violet between. */
 export function leanColor(p: number | null): string {
-  if (p === null || !Number.isFinite(p)) return '#dcd8e6';
+  if (p === null || !Number.isFinite(p)) return '#b388ff';
   const x = Math.min(1, Math.max(0, p));
   const [a, b] = x <= 0.5 ? [LEAN_STOPS[0], LEAN_STOPS[1]] : [LEAN_STOPS[1], LEAN_STOPS[2]];
   const t = x <= 0.5 ? x / 0.5 : (x - 0.5) / 0.5;
@@ -59,7 +70,7 @@ export function estimateRange(s: RunState): [number, number] {
 
 /** A panelist's colour: their lean on a yes/no question, their leading pick on a choice, where their estimate sits on a number. */
 export function agentTint(s: RunState, post: Post | undefined, range = estimateRange(s)): string {
-  if (!post) return '#dcd8e6';
+  if (!post) return '#b388ff';
   if (s.frame?.kind === 'choice' && post.shares) return outcomeColor(leader(post.shares));
   if (s.frame?.kind === 'number' && post.estimate) return leanColor(positionIn(post.estimate.value, range[0], range[1]));
   return leanColor(post.probability);
@@ -158,7 +169,9 @@ in float v_id;
 in float v_hl;
 in float v_len;
 in float v_vis;
-uniform vec3 u_color;
+uniform vec3 u_support;
+uniform vec3 u_oppose;
+uniform vec3 u_neutral;
 uniform float u_now;
 uniform float u_motion; // 0 when the viewer asked for reduced motion
 uniform float u_flow;   // 1 while the run is live: pulses travel, dashes march
@@ -187,13 +200,13 @@ void main() {
   float halo = exp(-d * d * 3.0) * 0.3;
   float head = reveal < 1.0 ? smoothstep(0.1, 0.0, reveal - v_t) * 1.4 : 0.0;
 
-  // Spacing in kilometres along the arc, so a pattern looks the same on a short arc and a long one.
+  // Colour says how things stand: violet aligned or agreeing, magenta opposed or disputing, indigo between.
+  vec3 tone = v_tone < 0.5 ? u_support : v_tone < 1.5 ? u_oppose : u_neutral;
+  // Evidence from the feeds is quieter, a pale wash of its tone.
+  if (v_kind > 0.5 && v_kind < 1.5) tone = mix(tone, vec3(0.86, 0.83, 0.96), 0.35);
+  // "Weighing an actor" marches toward the actor; every other arc is a solid line. Spacing is in km along the arc.
   float s = v_t * v_len;
-  float pattern = 1.0;
-  if (v_kind > 2.5) pattern = mix(0.15, 1.0, dashes(s / 140.0 - u_now * 0.9 * u_flow * u_motion, 0.5));   // weighing: marching
-  else if (v_kind > 0.5 && v_kind < 1.5) pattern = mix(0.1, 1.0, dashes(s / 70.0, 0.35));                // evidence: dotted
-  else if (v_tone > 0.5 && v_tone < 1.5) pattern = mix(0.12, 1.0, dashes(s / 260.0, 0.55));              // opposed: dashed
-  else if (v_tone > 1.5) pattern = mix(0.2, 1.0, dashes(s / 110.0, 0.4));                                 // neutral: fine dashes
+  float pattern = v_kind > 2.5 ? mix(0.18, 1.0, dashes(s / 140.0 - u_now * 0.9 * u_flow * u_motion, 0.5)) : 1.0;
 
   float speed = v_kind > 1.5 ? 0.5 : 0.22;
   float phase = fract(v_t - u_now * speed + v_strength * 3.7);
@@ -209,7 +222,7 @@ void main() {
 
   // The drawing tip glows along the line itself, not across the whole ribbon.
   float alpha = clamp(((core + halo) * pattern * base * (0.55 + 0.45 * v_strength) + head * (core + halo * 0.5) + pulse * core) * flash * settle * ends * focus, 0.0, 1.0);
-  vec3 col = mix(u_color, vec3(1.0), clamp(core * 0.25 + head * 0.5 + pulse * 0.6, 0.0, 1.0));
+  vec3 col = mix(tone, vec3(1.0), clamp(core * 0.3 + head * 0.5 + pulse * 0.6, 0.0, 1.0));
   fragColor = vec4(col * alpha, alpha);
 #endif
 }`;
@@ -268,7 +281,7 @@ function createArcLayer(): CustomLayerInterface & {
   setArcs(arcs: ArcSpec[], dim: boolean): void;
   setPings(pings: Ping[]): void;
   setLive(live: boolean): void;
-  setColor(color: [number, number, number]): void;
+  setTones(tones: [number, number, number][]): void;
   setHover(id: number): void;
   pick(x: number, y: number): number | null;
 } {
@@ -284,7 +297,7 @@ function createArcLayer(): CustomLayerInterface & {
   let live = false;
   let dim = false;
   let hover = -1;
-  let color: [number, number, number] = [1, 1, 1];
+  let tones: [number, number, number][] = [DEFAULT_TONES.support, DEFAULT_TONES.oppose, DEFAULT_TONES.neutral].map(rgb);
   let lastBirth = 0;
   // A pick happens on a pointer event, between frames: it reuses the last frame's projection and shaders.
   let lastProjection: CustomRenderMethodInput['defaultProjectionData'] | null = null;
@@ -426,7 +439,9 @@ function createArcLayer(): CustomLayerInterface & {
     g.uniform1f(u('u_dim'), dim ? 1 : 0);
     g.uniform1f(u('u_hover'), hover);
     g.uniform1f(u('u_widen'), widen);
-    g.uniform3f(u('u_color'), color[0], color[1], color[2]);
+    g.uniform3f(u('u_support'), ...tones[0]);
+    g.uniform3f(u('u_oppose'), ...tones[1]);
+    g.uniform3f(u('u_neutral'), ...tones[2]);
   };
 
   return {
@@ -443,7 +458,7 @@ function createArcLayer(): CustomLayerInterface & {
     },
     setPings(next) { pings = next; pingsDirty = true; map?.triggerRepaint(); },
     setLive(v) { live = v; map?.triggerRepaint(); },
-    setColor(c) { color = c; map?.triggerRepaint(); },
+    setTones(t) { tones = t; map?.triggerRepaint(); },
     setHover(id) { if (id !== hover) { hover = id; map?.triggerRepaint(); } },
 
     pick(x, y) {
@@ -602,12 +617,14 @@ export interface OsiGlobe {
   update(state: RunState | null): void;
   /** Lights a piece of the research and what it touches; null clears. */
   select(key: string | null): void;
-  /** The arcs' colour, from the Style Studio. */
-  setColor(hex: string): void;
+  /** The arcs' three tones, from the Style Studio. */
+  setColors(colors: ToneColors): void;
   /** Keeps the globe centred in the space panels leave free; null gives the whole map back. */
   setInsets(padding: PaddingOptions | null): void;
   /** Let the camera follow the run (the default), or leave it where the person puts it. */
   follow(on: boolean): void;
+  /** The piece of the run under a point on the map, if any, so other layers can leave that click to OSI. */
+  hit(point: { x: number; y: number }): string | null;
   /** Re-adds what a style change removed. */
   ensure(): void;
   destroy(): void;
@@ -629,7 +646,7 @@ export function attachOsi(map: MlMap, options: OsiGlobeOptions = {}): OsiGlobe {
   const director = createDirector(map, options.onFollowChange);
   let state: RunState | null = null;
   let selected: string | null = null;
-  let arcColor = DEFAULT_ARC_COLOR;
+  let palette: ToneColors = { ...DEFAULT_TONES };
   /** The links drawn, in the order the layer indexes them, for turning a pick back into a link. */
   let drawn: Link[] = [];
   /** When each link (by id and version) started drawing, on the layer's clock. */
@@ -664,7 +681,7 @@ export function attachOsi(map: MlMap, options: OsiGlobeOptions = {}): OsiGlobe {
           'circle-color': ['get', 'color'],
           'circle-opacity': ['case', ['==', ['get', 'dim'], 1], 0.3, ['==', ['get', 'kind'], 'context'], 0.75, 0.95],
           'circle-stroke-width': ['case', ['==', ['get', 'sel'], 1], 2.5, ['==', ['get', 'kind'], 'actor'], 1.5, 1],
-          'circle-stroke-color': ['case', ['==', ['get', 'sel'], 1], '#ffffff', ['==', ['get', 'kind'], 'actor'], 'rgba(255,255,255,0.85)', 'rgba(6,6,12,0.9)'],
+          'circle-stroke-color': ['case', ['==', ['get', 'sel'], 1], '#ffffff', ['==', ['get', 'kind'], 'actor'], 'rgba(243,234,255,0.9)', 'rgba(10,6,20,0.9)'],
         },
       });
     }
@@ -683,8 +700,8 @@ export function attachOsi(map: MlMap, options: OsiGlobeOptions = {}): OsiGlobe {
           'text-optional': true,
         },
         paint: {
-          'text-color': ['case', ['==', ['get', 'dim'], 1], 'rgba(230,230,240,0.35)', '#ECEAF2'],
-          'text-halo-color': 'rgba(6,6,12,0.92)',
+          'text-color': ['case', ['==', ['get', 'dim'], 1], 'rgba(239,228,255,0.32)', '#EFE4FF'],
+          'text-halo-color': 'rgba(8,4,18,0.92)',
           'text-halo-width': 1.4,
         },
       });
@@ -703,27 +720,27 @@ export function attachOsi(map: MlMap, options: OsiGlobeOptions = {}): OsiGlobe {
           'text-allow-overlap': true,
           'text-ignore-placement': true,
         },
-        paint: { 'text-color': '#FFFFFF', 'text-halo-color': 'rgba(6,6,12,0.85)', 'text-halo-width': 2 },
+        paint: { 'text-color': '#F5ECFF', 'text-halo-color': 'rgba(120,60,220,0.55)', 'text-halo-width': 2.2, 'text-halo-blur': 1.2 },
       });
     }
   };
 
   /* Pointer: points come from MapLibre's own hit-testing; arcs from the picking pass. */
-  const nodeAt = (e: MapMouseEvent): string | null => {
+  const nodeAt = (p: { x: number; y: number }): string | null => {
     if (!map.getLayer('osi-node-core')) return null;
-    const f = map.queryRenderedFeatures(e.point, { layers: ['osi-node-core'] })[0];
+    const f = map.queryRenderedFeatures([p.x, p.y], { layers: ['osi-node-core'] })[0];
     const key = f?.properties?.key;
     return typeof key === 'string' && key !== 'focus' ? key : null;
   };
-  const arcAt = (e: MapMouseEvent): string | null => {
+  const arcAt = (p: { x: number; y: number }): string | null => {
     if (!drawn.length) return null;
-    const i = layer.pick(e.point.x, e.point.y);
+    const i = layer.pick(p.x, p.y);
     return i === null ? null : `link:${drawn[i].id}`;
   };
 
   const onClick = (e: MapMouseEvent) => {
     if (!state) return;
-    const key = nodeAt(e) ?? arcAt(e);
+    const key = nodeAt(e.point) ?? arcAt(e.point);
     if (key) options.onSelect?.(key);
     else if (selected) options.onSelect?.(null);
   };
@@ -734,7 +751,7 @@ export function attachOsi(map: MlMap, options: OsiGlobeOptions = {}): OsiGlobe {
     if (!state || (!drawn.length && !state.actors.length)) return;
     const run = () => {
       lastMove = performance.now();
-      const key = nodeAt(e) ?? arcAt(e);
+      const key = nodeAt(e.point) ?? arcAt(e.point);
       const arcIndex = key?.startsWith('link:') ? drawn.findIndex(l => `link:${l.id}` === key) : -1;
       layer.setHover(arcIndex);
       map.getCanvas().style.cursor = key ? 'pointer' : '';
@@ -806,12 +823,12 @@ export function attachOsi(map: MlMap, options: OsiGlobeOptions = {}): OsiGlobe {
     for (const c of s.context) {
       if (c.lat === null || c.lng === null) continue;
       const key = `c:${c.id}`;
-      features.push(point(c.lng, c.lat, { key, kind: 'context', label: '', color: '#9A97A8', radius: 2.6, halo: 6, sel: key === selected ? 1 : 0, dim: dimNode(key) }));
+      features.push(point(c.lng, c.lat, { key, kind: 'context', label: '', color: '#9A93B8', radius: 2.6, halo: 6, sel: key === selected ? 1 : 0, dim: dimNode(key) }));
     }
     for (const a of s.actors) {
       if (a.lat === null || a.lng === null) continue;
       const key = `a:${a.id}`;
-      features.push(point(a.lng, a.lat, { key, kind: 'actor', label: a.name, color: arcColor, radius: key === selected ? 6.5 : 5, halo: 16, sel: key === selected ? 1 : 0, dim: dimNode(key) }));
+      features.push(point(a.lng, a.lat, { key, kind: 'actor', label: a.name, color: lift(palette.support, 0.35), radius: key === selected ? 6.5 : 5, halo: 16, sel: key === selected ? 1 : 0, dim: dimNode(key) }));
     }
     for (const g of s.agents) {
       if (g.lat === null || g.lng === null) continue;
@@ -829,7 +846,7 @@ export function attachOsi(map: MlMap, options: OsiGlobeOptions = {}): OsiGlobe {
         const key = `s:${i}`;
         features.push(point(sc.lng, sc.lat, {
           key, kind: 'scenario', label: `${sc.name} · ${Math.round(sc.probability * 100)}%`,
-          color: '#F2F0F7', radius: 3 + 8 * sc.probability, halo: 10 + 24 * sc.probability, sel: key === selected ? 1 : 0, dim: dimNode(key),
+          color: lift(palette.support, 0.6), radius: 3 + 8 * sc.probability, halo: 10 + 24 * sc.probability, sel: key === selected ? 1 : 0, dim: dimNode(key),
         }));
       });
       s.report.signposts.forEach((sp, i) => {
@@ -850,7 +867,7 @@ export function attachOsi(map: MlMap, options: OsiGlobeOptions = {}): OsiGlobe {
 
     // Ripples: a node's arrival, a panelist thinking, and the forecast's home while the run is live.
     const pings: Ping[] = [];
-    const base = rgb(arcColor);
+    const base = rgb(palette.support);
     for (const f of features) {
       const key = String(f.properties.key);
       if (f.properties.kind === 'context' || f.properties.kind === 'focus') continue;
@@ -862,7 +879,7 @@ export function attachOsi(map: MlMap, options: OsiGlobeOptions = {}): OsiGlobe {
     for (const g of s.agents) {
       if (!(g.id in s.thinking) || g.lat === null || g.lng === null) continue;
       if (!thinkingSince.has(g.id)) thinkingSince.set(g.id, now);
-      pings.push({ pos: mercator([g.lng, g.lat]), color: base, size: 22, start: thinkingSince.get(g.id)!, period: 1.1, once: false });
+      pings.push({ pos: mercator([g.lng, g.lat]), color: rgb(lift(palette.support, 0.4)), size: 22, start: thinkingSince.get(g.id)!, period: 1.1, once: false });
     }
     if (s.status === 'running' && focus && focus.lat !== null && focus.lng !== null) {
       focusSince ||= now;
@@ -903,10 +920,12 @@ export function attachOsi(map: MlMap, options: OsiGlobeOptions = {}): OsiGlobe {
       selected = key;
       if (state) draw(state);
     },
-    setColor(hex) {
-      if (!/^#[0-9a-f]{6}$/i.test(hex) || hex === arcColor) return;
-      arcColor = hex;
-      layer.setColor(rgb(hex));
+    setColors(colors) {
+      const valid = (hex: string) => /^#[0-9a-f]{6}$/i.test(hex);
+      if (![colors.support, colors.oppose, colors.neutral].every(valid)) return;
+      if (colors.support === palette.support && colors.oppose === palette.oppose && colors.neutral === palette.neutral) return;
+      palette = { ...colors };
+      layer.setTones([palette.support, palette.oppose, palette.neutral].map(rgb));
       if (state) draw(state);
     },
     setInsets(padding) {
@@ -916,6 +935,9 @@ export function attachOsi(map: MlMap, options: OsiGlobeOptions = {}): OsiGlobe {
       director.follow(on);
     },
     ensure,
+    hit(point) {
+      return state ? nodeAt(point) ?? arcAt(point) : null;
+    },
     destroy() {
       director.destroy();
       map.off('click', onClick);
