@@ -23,6 +23,8 @@ export interface MapPalette {
   flightGov: string;
   flightMilitary: string;
   flightUnknown: string;
+  /** OAI's arcs and actors on the globe. */
+  oai: string;
 }
 
 export type MapPaletteKey = keyof MapPalette;
@@ -41,6 +43,7 @@ export const MAP_VARS: Record<MapPaletteKey, string> = {
   flightGov: '--map-flight-gov',
   flightMilitary: '--map-flight-military',
   flightUnknown: '--map-flight-unknown',
+  oai: '--map-oai',
 };
 
 /**
@@ -63,6 +66,7 @@ export const MAP_DEFAULTS: MapPalette = {
   flightGov: '#ff9500',
   flightMilitary: '#ff0000',
   flightUnknown: '#546e7a',
+  oai: '#ffffff',
 };
 
 export const MAP_PALETTE_KEYS = Object.keys(MAP_DEFAULTS) as MapPaletteKey[];

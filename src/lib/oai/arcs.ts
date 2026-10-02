@@ -69,8 +69,12 @@ export function mercator([lng, lat]: LngLat): [number, number] {
 export interface ArcSpec {
   from: LngLat;
   to: LngLat;
-  /** Linear RGB, 0..1. */
-  color: [number, number, number];
+  /** 0 support, 1 oppose, 2 neutral: drawn as solid, dashed and dotted. */
+  tone: number;
+  /** Its index, written out by the picking pass. */
+  id: number;
+  /** 1 when it belongs to what is selected. */
+  highlight: number;
   strength: number;
   /** When it starts drawing, in the layer's clock (seconds). */
   birth: number;
@@ -78,8 +82,8 @@ export interface ArcSpec {
   kind: number;
 }
 
-/** Floats per vertex: pos(3) prev(3) next(3) side t (2) color(3) strength birth kind (3). */
-export const ARC_STRIDE = 17;
+/** Floats per vertex: pos(3) prev(3) next(3) side t (2) tone id highlight (3) strength birth kind (3) length (1). */
+export const ARC_STRIDE = 18;
 
 export const ARC_SEGMENTS = 40;
 
@@ -113,8 +117,10 @@ export function packArcs(arcs: ArcSpec[], segments = ARC_SEGMENTS): { vertices: 
           prev[0], prev[1], prev[2],
           next[0], next[1], next[2],
           side, i / segments,
-          arc.color[0], arc.color[1], arc.color[2],
+          arc.tone, arc.id, arc.highlight,
           arc.strength, arc.birth, arc.kind,
+          // Length in km, so dashes keep their spacing whatever the arc's span.
+          km,
         ], v);
         v += ARC_STRIDE;
       }

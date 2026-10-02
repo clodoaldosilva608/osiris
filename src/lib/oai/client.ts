@@ -11,7 +11,9 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ProviderId } from './providers';
-import { applyEvent, currentProbability, initialState, type RunState } from './state';
+import { applyEvent, currentAnswer, currentProbability, initialState, type RunState } from './state';
+import { directionWord } from './forecast';
+import { questionBlock, trajectoryLine } from './prompts';
 import type { Depth, RunStatus, Stamped } from './types';
 
 export interface Engine {
@@ -25,6 +27,8 @@ export interface HistoryEntry {
   question: string;
   at: number;
   probability: number | null;
+  /** The answer in words, whatever kind of question it was. */
+  answer?: string;
   status: RunStatus;
   provider: string;
   model: string;
@@ -135,11 +139,12 @@ export function useOai() {
   /** Keeps the history entry in step with how a run ended. */
   const record = useCallback((id: string, s: RunState) => {
     const probability = currentProbability(s);
+    const answer = currentAnswer(s) || undefined;
     setHistory(h => {
       const i = h.findIndex(x => x.id === id);
-      if (i < 0 || (h[i].status === s.status && h[i].probability === probability)) return h;
+      if (i < 0 || (h[i].status === s.status && h[i].probability === probability && h[i].answer === answer)) return h;
       const next = h.slice();
-      next[i] = { ...h[i], status: s.status, probability };
+      next[i] = { ...h[i], status: s.status, probability, answer };
       write('local', HISTORY_KEY, JSON.stringify(next));
       return next;
     });
@@ -302,16 +307,16 @@ export function toMarkdown(s: RunState, url: string): string {
   const pct = (p: number) => `${Math.round(p * 100)}%`;
   const r = s.report;
   const lines = [`# ${r?.headline || s.question}`, '', `**Question:** ${s.question}`];
-  if (s.frame) lines.push(`**Proposition:** ${s.frame.proposition}`, s.frame.horizon ? `**Horizon:** ${s.frame.horizon}` : '', `**Base rate:** ${pct(s.frame.baseRate)}: ${s.frame.baseRateReason}`);
+  if (s.frame) lines.push('', '```', questionBlock(s.frame), '```');
   if (r) {
-    lines.push('', `## Forecast: ${pct(r.probability)} (${r.confidence} confidence)`, `Panel consensus ${pct(r.swarm)}.${r.deviation ? ` ${r.deviation}` : ''}`, '', r.summary);
-    if (r.drivers.length) lines.push('', '## Drivers', ...r.drivers.map(d => `- ${d.push === 'yes' ? '▲' : '▼'} ${d.text}`));
+    lines.push('', `## Forecast: ${r.answer} (${r.confidence} confidence)`, r.deviation, '', r.summary);
+    if (r.drivers.length) lines.push('', '## Drivers', ...r.drivers.map(d => `- ${d.text} (${directionWord(s.frame, d.push, d.favors)})`));
     if (r.scenarios.length) lines.push('', '## Scenarios', ...r.scenarios.map(x => `- **${x.name}** (${pct(x.probability)}): ${x.description}`));
-    if (r.signposts.length) lines.push('', '## Signposts', ...r.signposts.map(x => `- ${x.text}${x.place ? ` (${x.place})` : ''}: points ${x.means.toUpperCase()}`));
+    if (r.signposts.length) lines.push('', '## Signposts', ...r.signposts.map(x => `- ${x.text}${x.place ? ` (${x.place})` : ''}: points ${directionWord(s.frame, x.means, x.favors)}`));
     if (r.dissent) lines.push('', '## Dissent', r.dissent);
     if (r.caveats.length) lines.push('', '## Caveats', ...r.caveats.map(c => `- ${c}`));
   }
-  if (s.rounds.length) lines.push('', '## The panel by round', ...s.rounds.map(x => `- Round ${x.round}: ${pct(x.consensus)} (middle half ${pct(x.p25)}–${pct(x.p75)}, ${x.n} panelists)`));
+  if (s.rounds.length && s.frame) lines.push('', '## The panel by round', ...s.rounds.map(x => `- ${trajectoryLine(s.frame!, x)}`));
   lines.push('', `Run on ${s.provider} / ${s.model}, ${s.usage.calls} model calls. Watch: ${url}`, '', '_OSIRIS OAI: swarm forecasting after MiroFish, rebuilt natively. A simulation, not a guarantee._');
   return lines.filter(l => l !== '').join('\n').replace(/\n(#+ )/g, '\n\n$1');
 }

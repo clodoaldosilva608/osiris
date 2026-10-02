@@ -53,6 +53,7 @@
   --map-flight-gov: #ff9500;
   --map-flight-military: #ff0000;
   --map-flight-unknown: #546e7a;
+  --map-oai: #ffffff;
 
   /* ── Borders ── */
   --border-primary: rgba(var(--gold-rgb), 0.15);

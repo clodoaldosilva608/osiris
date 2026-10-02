@@ -370,6 +370,9 @@ function StyleStudio({ onClose, isMobile }: { onClose: () => void; isMobile?: bo
           <Row label="Government"><ResettableSwatch label="Government aircraft" value={s.map.flightGov} fallback={MAP_DEFAULTS.flightGov} onChange={v => setMap('flightGov', v)} /></Row>
           <Row label="Military"><ResettableSwatch label="Military aircraft" value={s.map.flightMilitary} fallback={MAP_DEFAULTS.flightMilitary} onChange={v => setMap('flightMilitary', v)} /></Row>
           <Row label="Unknown"><ResettableSwatch label="Unknown aircraft" value={s.map.flightUnknown} fallback={MAP_DEFAULTS.flightUnknown} onChange={v => setMap('flightUnknown', v)} /></Row>
+
+          <SubHead label="OAI" note="The arcs a forecast draws through the sky, and the actors they join. Line style, not colour, tells relations apart." />
+          <Row label="Arcs"><ResettableSwatch label="OAI arc colour" value={s.map.oai} fallback={MAP_DEFAULTS.oai} onChange={v => setMap('oai', v)} /></Row>
         </Section>
 
         <Section title="Surface">

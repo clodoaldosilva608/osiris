@@ -98,6 +98,25 @@ export function answerText(frame: Frame | null, report: Report | null, stat: Rou
   return typeof p === 'number' ? `${pct(p)} YES` : '';
 }
 
+/** The answer at a glance, for a label on the globe: "62%", "Lula 45%", "86.4 USD". */
+export function shortAnswer(frame: Frame | null, report: Report | null, stat: RoundStat | null): string {
+  if (!frame) return '';
+  if (frame.kind === 'choice') {
+    const shares = report?.shares ?? stat?.shares;
+    if (!shares?.length) return '';
+    const i = leader(shares);
+    return `${frame.outcomes[i] ?? '?'} ${pct(shares[i])}`;
+  }
+  if (frame.kind === 'number') {
+    const v = report?.estimate?.value ?? stat?.value?.median;
+    if (v === undefined || !Number.isFinite(v)) return '';
+    const unit = frame.unit.split(' ')[0] ?? '';
+    return `${formatAmount(v)}${unit && unit.length <= 4 ? ` ${unit}` : ''}`;
+  }
+  const p = report?.probability ?? stat?.consensus;
+  return typeof p === 'number' ? pct(p) : '';
+}
+
 /** How a driver or signpost's direction reads for this kind of question. */
 export function directionWord(frame: Frame | null, push: 'yes' | 'no', favors: string): string {
   if (frame?.kind === 'choice') return favors || (push === 'yes' ? 'for' : 'against');
