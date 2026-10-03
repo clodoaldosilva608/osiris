@@ -21,12 +21,13 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { History, Maximize2, MessageSquare, Orbit, Plus, X } from 'lucide-react';
+import { History, Maximize2, Plus, X } from 'lucide-react';
 import { PROVIDERS, providerInfo } from '@/lib/oi/providers';
 import { loadEngine, loadKey, type Engine, type OiClient } from '@/lib/oi/client';
 import { resolve } from '@/lib/oi/research';
 import { T, LABEL } from './oi/theme';
-import { IconButton, OiMark, Segmented } from './oi/atoms';
+import { IconButton, OiMark } from './oi/atoms';
+import { ModeSwitch, modeAccent, type OiMode } from './oi/ModeSwitch';
 import { AssistView } from './oi/assist/AssistView';
 import type { AssistClient } from '@/lib/oi/assist/client';
 import { AskForm, EnginePill, EngineSheet } from './oi/engine';
@@ -68,7 +69,7 @@ export interface OiPanelProps {
   onStage: (s: Stage) => void;
 }
 
-export type OiMode = 'forecast' | 'assist';
+export type { OiMode };
 
 /** The engine this browser last used, or OpenAI with its default model. */
 function initialEngine(): Engine {
@@ -165,17 +166,13 @@ export default function OiPanel(props: OiPanelProps) {
 
   /* ── Docked, or in the phone drawer ── */
   const assisting = props.mode === 'assist';
+  const accent = modeAccent(props.mode);
   const header = (
     <header className={`flex items-center gap-2 ${embedded ? 'pb-3' : 'px-4 py-3 border-b border-[var(--border-secondary)]'}`}>
-      {embedded ? <span className={`${LABEL} text-[var(--text-muted)] truncate`}>{assisting ? 'Ask anything' : 'Swarm forecasting'}</span> : (
-        <>
-          <OiMark live={s?.status === 'running' || props.assist.busy} />
-          <span className="hud-text text-[11px] text-[var(--text-primary)]">OI</span>
-          {!s && !assisting && <span className={`${LABEL} text-[var(--text-muted)] truncate`}>Swarm forecasting</span>}
-          {assisting && <span className={`${LABEL} text-[var(--text-muted)] truncate`}>Ask anything</span>}
-          {s?.status === 'running' && <span className="w-1.5 h-1.5 rounded-full bg-[var(--alert-green)] animate-osiris-pulse" title="Forecast running" />}
-        </>
-      )}
+      {!embedded && <OiMark live={s?.status === 'running' || props.assist.busy} />}
+      {!embedded && <span className="hud-text text-[11px] text-[var(--text-primary)]">OI</span>}
+      {!embedded && <span className="w-px h-3 bg-[var(--border-primary)]" />}
+      <span className={`${LABEL} !text-[9.5px] truncate`} style={{ color: accent }}>{assisting ? 'Assist' : 'Forecast'}</span>
       <div className="ml-auto flex items-center gap-0.5">
         <EnginePill engine={engine} ready={ready} open={engineOpen} onClick={() => setEngineOpen(v => !v)} />
         {!assisting && <IconButton title={showHistory ? 'Back' : 'Your forecasts'} onClick={() => setShowHistory(v => !v)} active={showHistory}><History className="w-3.5 h-3.5" /></IconButton>}
@@ -187,11 +184,8 @@ export default function OiPanel(props: OiPanelProps) {
   );
 
   const modeSwitch = (
-    <div className={embedded ? 'pb-3' : 'px-3 py-2 border-b border-[var(--border-secondary)]'}>
-      <Segmented id={embedded ? 'oi-mode-m' : 'oi-mode'} size="sm" value={props.mode} onChange={props.onMode} options={[
-        { value: 'forecast', label: s?.status === 'running' ? 'Forecast ●' : 'Forecast', icon: <Orbit className="w-3 h-3" />, title: 'The forecasting swarm' },
-        { value: 'assist', label: 'Assist', icon: <MessageSquare className="w-3 h-3" />, title: 'Talk to OI: it works the map for you' },
-      ]} />
+    <div className={embedded ? 'pb-3' : 'px-3 pt-2.5 pb-2.5 border-b border-[var(--border-secondary)]'}>
+      <ModeSwitch id={embedded ? 'm' : 'd'} mode={props.mode} onMode={props.onMode} forecastLive={s?.status === 'running'} assistBusy={props.assist.busy} compact={embedded} />
     </div>
   );
 
@@ -244,7 +238,9 @@ export default function OiPanel(props: OiPanelProps) {
   if (embedded) return <div className="flex flex-col">{header}{modeSwitch}<div className="-mx-3">{body}</div></div>;
 
   return (
-    <div className="glass-panel overflow-hidden flex flex-col max-h-[calc(100vh-8rem)]">
+    <div className="glass-panel relative overflow-hidden flex flex-col max-h-[calc(100vh-8rem)]">
+      {/* The panel's top edge wears the mode's colour: gold for Forecast, cyan for Assist. */}
+      <span className="absolute inset-x-0 top-0 h-[2px] z-10 transition-colors duration-500" style={{ background: accent, opacity: 0.85 }} aria-hidden />
       {header}
       {modeSwitch}
       <div className="min-h-0 overflow-y-auto styled-scrollbar">{body}</div>

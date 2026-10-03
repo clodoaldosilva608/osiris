@@ -135,6 +135,12 @@ describe('listModels', () => {
     expect(pickModel('openai', models)).toBe('gpt-5-mini');
   });
 
+  it('leaves out the OpenAI models only its Responses API serves', async () => {
+    const { f } = fakeFetch(jsonRes({ data: ['gpt-5', 'gpt-5-pro', 'o3-pro-2025-06-10', 'gpt-5-codex', 'codex-mini-latest', 'o3-deep-research', 'sora-2', 'o3'].map(id => ({ id })) }));
+    const { models } = await listModels('openai', KEY, f);
+    expect(models.map(m => m.id).sort()).toEqual(['gpt-5', 'o3']);
+  });
+
   it('checks an OpenRouter key on its own endpoint', async () => {
     const { f, calls } = fakeFetch(jsonRes({ error: { message: 'No auth credentials found' } }, 401));
     await expect(listModels('openrouter', KEY, f)).rejects.toMatchObject({ code: 'auth' });

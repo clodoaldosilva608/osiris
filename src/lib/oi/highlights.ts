@@ -3,9 +3,9 @@
  *
  * Labelled points (what it found, or places it named) and, optionally, the
  * circle of the area it searched, drawn above every other layer in the
- * theme's gold. New marks pulse a few times as they land, then hold still:
- * a map that repaints itself forever for a highlight is a map that drains
- * a laptop. The marks re-add themselves after a basemap change.
+ * theme's cyan, Assist's colour. New marks pulse a few times as they land,
+ * then hold still: a map that repaints itself forever for a highlight is a
+ * map that drains a laptop. The marks re-add themselves after a basemap change.
  */
 import type { GeoJSONSource, Map as MlMap } from 'maplibre-gl';
 import type { Highlight } from './assist/tools';
@@ -62,21 +62,21 @@ export function attachHighlights(map: MlMap): Highlighter {
   let pulse = 0;
 
   const ensure = () => {
-    const gold = themeColor('--gold-primary', '#D4AF37');
-    const light = themeColor('--gold-light', '#F0D060');
+    // Assist's colour: cyan in Core, the theme's accent in Ghost.
+    const accent = themeColor('--cyan-primary', '#00E5FF');
     if (!map.getSource(AREA)) map.addSource(AREA, { type: 'geojson', data: EMPTY });
     if (!map.getSource(POINTS)) map.addSource(POINTS, { type: 'geojson', data: EMPTY });
     if (!map.getLayer('oi-hl-area-fill')) {
-      map.addLayer({ id: 'oi-hl-area-fill', type: 'fill', source: AREA, filter: ['==', ['get', 'kind'], 'ring'], paint: { 'fill-color': gold, 'fill-opacity': 0.06 } });
+      map.addLayer({ id: 'oi-hl-area-fill', type: 'fill', source: AREA, filter: ['==', ['get', 'kind'], 'ring'], paint: { 'fill-color': accent, 'fill-opacity': 0.06 } });
     }
     if (!map.getLayer('oi-hl-area-line')) {
-      map.addLayer({ id: 'oi-hl-area-line', type: 'line', source: AREA, filter: ['==', ['get', 'kind'], 'ring'], paint: { 'line-color': gold, 'line-width': 1.4, 'line-opacity': 0.85, 'line-dasharray': [2, 2] } });
+      map.addLayer({ id: 'oi-hl-area-line', type: 'line', source: AREA, filter: ['==', ['get', 'kind'], 'ring'], paint: { 'line-color': accent, 'line-width': 1.4, 'line-opacity': 0.85, 'line-dasharray': [2, 2] } });
     }
     if (!map.getLayer('oi-hl-halo')) {
-      map.addLayer({ id: 'oi-hl-halo', type: 'circle', source: POINTS, paint: { 'circle-radius': 13, 'circle-color': gold, 'circle-opacity': 0.22, 'circle-blur': 0.5, 'circle-pitch-alignment': 'map' } });
+      map.addLayer({ id: 'oi-hl-halo', type: 'circle', source: POINTS, paint: { 'circle-radius': 13, 'circle-color': accent, 'circle-opacity': 0.22, 'circle-blur': 0.5, 'circle-pitch-alignment': 'map' } });
     }
     if (!map.getLayer('oi-hl-core')) {
-      map.addLayer({ id: 'oi-hl-core', type: 'circle', source: POINTS, paint: { 'circle-radius': 4.5, 'circle-color': light, 'circle-stroke-color': 'rgba(4,4,10,0.9)', 'circle-stroke-width': 2, 'circle-pitch-alignment': 'map' } });
+      map.addLayer({ id: 'oi-hl-core', type: 'circle', source: POINTS, paint: { 'circle-radius': 4.5, 'circle-color': accent, 'circle-stroke-color': 'rgba(4,4,10,0.9)', 'circle-stroke-width': 2, 'circle-pitch-alignment': 'map' } });
     }
     if (!map.getLayer('oi-hl-label')) {
       map.addLayer({
@@ -89,7 +89,7 @@ export function attachHighlights(map: MlMap): Highlighter {
       map.addLayer({
         id: 'oi-hl-area-label', type: 'symbol', source: AREA, filter: ['==', ['get', 'kind'], 'centre'],
         layout: { 'text-field': ['get', 'label'], 'text-font': ['Open Sans Bold'], 'text-size': 10, 'text-letter-spacing': 0.2, 'text-transform': 'uppercase', 'text-offset': [0, -1.4] },
-        paint: { 'text-color': gold, 'text-halo-color': 'rgba(4,4,10,0.9)', 'text-halo-width': 1.4 },
+        paint: { 'text-color': accent, 'text-halo-color': 'rgba(4,4,10,0.9)', 'text-halo-width': 1.4 },
       });
     }
     // Above everything drawn since.

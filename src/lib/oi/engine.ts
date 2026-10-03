@@ -19,7 +19,7 @@
  * draws the analysis while it happens.
  */
 import { roundStatFor } from './aggregate';
-import { DEPTHS, estimateCalls } from './depths';
+import { DEPTHS, PANEL_SEED_MAX, estimateCalls, type SeedScope } from './depths';
 import { gatherContext } from './context';
 import { extractJson, parseAgents, parsePost, parseReport, parseWorld } from './parse';
 import {
@@ -34,6 +34,8 @@ export { DEPTHS, estimateCalls };
 export interface EngineInput {
   question: string;
   seed: string;
+  /** Whether every forecaster and the report read the seed too, or only the world model. Default brief. */
+  seedScope?: SeedScope;
   depth: Depth;
   useFeeds: boolean;
 }
@@ -152,6 +154,8 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
   s.check();
   s.emit({ t: 'context', items: context });
   const evidence = feedBlock(context);
+  // With the whole panel reading it, every turn and the report quote the head of the asker's data.
+  const data = input.seedScope === 'panel' ? input.seed.slice(0, PANEL_SEED_MAX) : undefined;
 
   // 2. World model
   s.emit({ t: 'phase', phase: 'graph', label: 'Mapping actors and relations' });
@@ -203,7 +207,7 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
       try {
         const raw = await s.json({
           user: turnPrompt({
-            frame, agent, round, rounds: depth.rounds, brief, evidence, own, mentions,
+            frame, agent, round, rounds: depth.rounds, brief, evidence, data, own, mentions,
             panel: panelFor(agent, prev, byId), injects: injected, today,
           }),
           maxTokens: 1200,
@@ -260,7 +264,7 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
     estimate: last.value ? { value: last.value.median, low: last.value.low, high: last.value.high } : undefined,
   };
   const report = parseReport(
-    await s.json({ user: reportPrompt({ frame, brief, rounds: stats, finals, injects: injected, evidence, today }), maxTokens: 3000, temperature: 0.3, timeoutMs: 150_000 }),
+    await s.json({ user: reportPrompt({ frame, brief, rounds: stats, finals, injects: injected, evidence, data, today }), maxTokens: 3000, temperature: 0.3, timeoutMs: 150_000 }),
     swarm, actorIds, frame,
   );
   s.emit({ t: 'report', report });

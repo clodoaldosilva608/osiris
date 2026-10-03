@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DEPTHS, askRun, estimateCalls, mapLimit, panelFor, runEngine, type EngineDeps } from './engine';
+import { PANEL_SEED_MAX, SEED_MAX, seedCost } from './depths';
 import { createDemoChat } from './demo';
 import { ProviderError, type ChatFn } from './providers';
 import { applyEvent, initialState, type RunState } from './state';
@@ -83,6 +84,23 @@ describe('runEngine', () => {
     expect(h.prompts[0]).toContain('[c1]');
     expect(h.prompts[0]).toContain('Leaked draft text.');
     expect(h.prompts.find(p => p.includes('This is round'))).toContain('Envoys due in Geneva');
+  });
+
+  it('gives the asker data to the world model only, unless the whole panel is to read it', async () => {
+    const brief = harness(createDemoChat());
+    await runEngine({ question: 'Will the envoys sign a deal?', seed: 'Our channel check: 7 of 9 delegations ready.', depth: 'quick', useFeeds: false }, brief.deps);
+    expect(brief.prompts.filter(p => p.includes('7 of 9 delegations'))).toHaveLength(1);
+
+    const panel = harness(createDemoChat());
+    const seed = `Our channel check: 7 of 9 delegations ready.${' More rows.'.repeat(2_000)}`;
+    await runEngine({ question: 'Will the envoys sign a deal?', seed, seedScope: 'panel', depth: 'quick', useFeeds: false }, panel.deps);
+    const turns = panel.prompts.filter(p => p.includes('This is round'));
+    expect(turns.length).toBeGreaterThan(0);
+    expect(turns.every(p => p.includes('7 of 9 delegations'))).toBe(true);
+    expect(panel.prompts[panel.prompts.length - 1]).toContain('7 of 9 delegations');
+    // Every turn reads the head of the data, not all of it.
+    expect(turns[0].length).toBeLessThan(seed.length);
+    expect(fold(panel.events).report).not.toBeNull();
   });
 
   it('puts an injected event in front of the panel from the next round on, and in the report', async () => {
@@ -192,5 +210,17 @@ describe('mapLimit', () => {
     });
     expect(out).toEqual([2, 4, 6, 8, 10, 12, 14]);
     expect(peak).toBe(3);
+  });
+});
+
+describe('seedCost', () => {
+  it('counts the data once for the brief, and once per read when the whole panel reads it', () => {
+    expect(seedCost(0, 'standard', 'panel')).toEqual({ tokens: 0, calls: 0 });
+    expect(seedCost(4_000, 'standard', 'brief')).toEqual({ tokens: 1_000, calls: 1 });
+    const d = DEPTHS.standard;
+    // 4,000 characters once, then the same again in every turn and the report.
+    expect(seedCost(4_000, 'standard', 'panel')).toEqual({ tokens: 1_000 * (2 + d.agents * d.rounds), calls: 2 + d.agents * d.rounds });
+    // Each panel read is capped at PANEL_SEED_MAX; the whole run at SEED_MAX.
+    expect(seedCost(SEED_MAX * 2, 'quick', 'panel').tokens).toBe(SEED_MAX / 4 + (PANEL_SEED_MAX / 4) * (1 + DEPTHS.quick.agents * DEPTHS.quick.rounds));
   });
 });

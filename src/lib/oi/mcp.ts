@@ -61,7 +61,8 @@ export const TOOLS = [
       type: 'object',
       properties: {
         question: { type: 'string', description: 'What to forecast, ideally something that will resolve yes or no by a date. 8–500 characters.' },
-        context: { type: 'string', description: 'Optional seed material: a report, notes, a policy draft (up to 20,000 characters).' },
+        context: { type: 'string', description: 'Optional data of your own: a report, notes, a table, a policy draft (up to 100,000 characters, about 25,000 tokens). The world model reads it once.' },
+        context_scope: { type: 'string', enum: ['brief', 'panel'], description: 'brief (default): only the world model reads the context. panel: every forecaster in every round and the report agent also read its first 8,000 characters, which costs about 2,000 more input tokens per model call.' },
         depth: { type: 'string', enum: ['quick', 'standard', 'deep'], description: 'quick: 6 agents × 2 rounds (~15 model calls). standard: 10 × 3 (~33). deep: 16 × 4 (~67). Default standard.' },
         use_live_feeds: { type: 'boolean', description: 'Ground the run in OSIRIS live feeds. Default true.' },
         wait_seconds: { type: 'integer', minimum: 0, maximum: 280, description: 'How long to wait for the forecast before returning. Default: as long as this connection allows.' },
@@ -249,7 +250,7 @@ export async function callTool(name: string, args: Record<string, unknown>, ctx:
       const missing = needKey(ctx);
       if (missing) return missing;
       const started = startPrediction(
-        { question: args.question, seed: args.context, depth: args.depth, use_feeds: args.use_live_feeds },
+        { question: args.question, seed: args.context, seed_scope: args.context_scope, depth: args.depth, use_feeds: args.use_live_feeds },
         ctx.creds, ctx.ip, ctx.deps,
       );
       if (!started.ok) return toolError(started.error);

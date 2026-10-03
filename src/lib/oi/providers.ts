@@ -414,6 +414,8 @@ export interface ModelEntry {
 
 /** Ids that are not chat models: embeddings, speech, images, moderation. */
 const NOT_CHAT = /embed|whisper|tts|audio|realtime|transcribe|dall-e|image|moderation|guard|rerank|davinci|babbage|search|computer-use|-instruct$|veo|imagen|aqa|learnlm|gemma-?3n/i;
+/** OpenAI models served only by its Responses API, which OI does not use: the pro, codex and deep-research models, and video. */
+const OPENAI_RESPONSES_ONLY = /-pro(?:-|$)|codex|deep-research|^sora/i;
 
 /**
  * The models this key can use, from the provider itself. A rejected key fails
@@ -457,7 +459,7 @@ export async function listModels(provider: ProviderId, key: string, f: FetchLike
 
   const seen = new Set<string>();
   const chat = models
-    .filter(m => isPlausibleModel(m.id) && !NOT_CHAT.test(m.id) && !seen.has(m.id) && seen.add(m.id))
+    .filter(m => isPlausibleModel(m.id) && !NOT_CHAT.test(m.id) && !(def.id === 'openai' && OPENAI_RESPONSES_ONLY.test(m.id)) && !seen.has(m.id) && seen.add(m.id))
     .slice(0, 500);
   // Suggested models first, in their order, then the rest A–Z.
   const rank = (id: string) => { const i = def.suggested.indexOf(id); return i < 0 ? 1e3 : i; };

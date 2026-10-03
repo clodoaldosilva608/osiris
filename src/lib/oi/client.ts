@@ -15,6 +15,7 @@ import { applyEvent, currentAnswer, currentProbability, initialState, type RunSt
 import { directionWord } from './forecast';
 import { questionBlock, trajectoryLine } from './prompts';
 import type { Depth, RunStatus, Stamped } from './types';
+import type { SeedScope } from './depths';
 
 export interface Engine {
   provider: ProviderId;
@@ -120,6 +121,7 @@ export async function errorOf(res: Response): Promise<string> {
 export interface StartInput {
   question: string;
   seed: string;
+  seedScope?: SeedScope;
   depth: Depth;
   useFeeds: boolean;
 }
@@ -220,7 +222,7 @@ export function useOi() {
       res = await fetch('/api/oi/runs', {
         method: 'POST',
         headers: headersFor(engine, key),
-        body: JSON.stringify({ question: input.question, seed: input.seed, depth: input.depth, use_feeds: input.useFeeds }),
+        body: JSON.stringify({ question: input.question, seed: input.seed, seed_scope: input.seedScope, depth: input.depth, use_feeds: input.useFeeds }),
       });
     } catch {
       setError('Could not reach OI.');
@@ -292,7 +294,7 @@ export function useOi() {
 export type OiClient = ReturnType<typeof useOi>;
 
 /** Checks a key by listing the models it can use. */
-export async function checkKey(provider: ProviderId, key: string): Promise<{ models: { id: string; name: string }[]; preferred: string } | { error: string }> {
+export async function checkKey(provider: ProviderId, key: string): Promise<{ models: { id: string; name: string }[]; preferred: string; listed: boolean } | { error: string }> {
   const res = await fetch('/api/oi/models', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-oi-provider': provider, ...(key ? { 'x-oi-key': key } : {}) },
@@ -301,7 +303,7 @@ export async function checkKey(provider: ProviderId, key: string): Promise<{ mod
   if (!res) return { error: 'Could not reach OI.' };
   if (!res.ok) return { error: await errorOf(res) };
   const body = await res.json();
-  return { models: body.models ?? [], preferred: body.default ?? '' };
+  return { models: body.models ?? [], preferred: body.default ?? '', listed: body.listed !== false };
 }
 
 /** The forecast as Markdown, for export. */

@@ -492,7 +492,7 @@ docker compose up -d`}</Pre>
               conversation (press <kbd>O</kbd>): ask in words, typed or spoken, and OI works the map for you. It flies
               to the place you name, switches the layers on, searches what is live (flights, military aircraft, ships,
               ports and chokepoints, earthquakes, fires, weather, disaster alerts, news, cameras, satellites), marks
-              what it finds in gold with the area it searched, and lists it in cards you can click through. It reads the
+              what it finds in cyan with the area it searched, and lists it in cards you can click through. It reads the
               markets, opens panels, and starts forecasts. Each step shows what it did as it does it; choose Navigate,
               Research or Forecast to steer it, or leave it on Auto.
             </p>

@@ -2,15 +2,16 @@
 /**
  * OSIRIS OI: choosing an engine (provider, key, model) and asking a question.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ArrowRight, Check, ChevronDown, Eye, EyeOff, KeyRound, Loader2 } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, Database, Eye, EyeOff, FileText, KeyRound, Loader2, Upload, X } from 'lucide-react';
 import { PROVIDERS, providerInfo, type ProviderId } from '@/lib/oi/providers';
-import { DEPTHS, estimateCalls } from '@/lib/oi/depths';
+import { DEPTHS, PANEL_SEED_MAX, SEED_MAX, estimateCalls, seedCost, type SeedScope } from '@/lib/oi/depths';
 import { checkKey, forgetKey, loadKey, saveEngine, saveKey, type Engine } from '@/lib/oi/client';
 import type { Depth, Frame } from '@/lib/oi/types';
 import { FIELD, KIND_SHORT, LABEL, T, gold, shortName } from './theme';
 import { OiMark, Overline, SectionTitle, Segmented, Switch, TextButton } from './atoms';
+import { ModelPicker } from './ModelPicker';
 
 export function EnginePill({ engine, ready, open, onClick }: { engine: Engine; ready: boolean; open: boolean; onClick: () => void }) {
   const info = providerInfo(engine.provider);
@@ -30,8 +31,8 @@ export function EngineSheet({ engine, setEngine, keyValue, setKey, onDone }: {
   const info = providerInfo(engine.provider);
   const [reveal, setReveal] = useState(false);
   const [models, setModels] = useState<{ id: string; name: string }[] | null>(null);
+  const [listed, setListed] = useState(false);
   const [status, setStatus] = useState<{ kind: 'idle' | 'checking' | 'ok' | 'error'; text: string }>({ kind: 'idle', text: '' });
-  const [filter, setFilter] = useState('');
 
   const pickProvider = (id: ProviderId) => {
     const next = { ...engine, provider: id, model: providerInfo(id).defaultModel };
@@ -39,6 +40,7 @@ export function EngineSheet({ engine, setEngine, keyValue, setKey, onDone }: {
     saveEngine(next);
     setKey(loadKey(id));
     setModels(null);
+    setListed(false);
     setStatus({ kind: 'idle', text: '' });
   };
 
@@ -48,6 +50,7 @@ export function EngineSheet({ engine, setEngine, keyValue, setKey, onDone }: {
     const out = await checkKey(engine.provider, keyValue);
     if ('error' in out) { setStatus({ kind: 'error', text: out.error }); return; }
     setModels(out.models);
+    setListed(out.listed);
     const model = out.models.some(m => m.id === engine.model) ? engine.model : out.preferred || engine.model;
     const next = { ...engine, model };
     setEngine(next);
@@ -55,13 +58,13 @@ export function EngineSheet({ engine, setEngine, keyValue, setKey, onDone }: {
     setStatus({ kind: 'ok', text: `Key accepted · ${out.models.length} model${out.models.length === 1 ? '' : 's'} available` });
   };
 
-  const shown = useMemo(() => {
-    const list = models ?? info.suggested.map(id => ({ id, name: id }));
-    const f = filter.trim().toLowerCase();
-    const hit = f ? list.filter(m => m.id.toLowerCase().includes(f) || m.name.toLowerCase().includes(f)) : list;
-    return hit.some(m => m.id === engine.model) ? hit : [{ id: engine.model, name: engine.model }, ...hit];
-  }, [models, info.suggested, filter, engine.model]);
+  const setModel = (model: string) => {
+    const next = { ...engine, model };
+    setEngine(next);
+    saveEngine(next);
+  };
 
+  const known = useMemo(() => info.suggested.map(id => ({ id, name: id })), [info.suggested]);
   const ready = !info.needsKey || keyValue.length > 0;
 
   return (
@@ -114,7 +117,7 @@ export function EngineSheet({ engine, setEngine, keyValue, setKey, onDone }: {
               Remember on this device
             </label>
             <a href={info.keyUrl} target="_blank" rel="noopener noreferrer" className="ml-auto text-[var(--text-muted)] hover:text-[var(--gold-light)]">Get a key ↗</a>
-            {keyValue && <button onClick={() => { forgetKey(engine.provider); setKey(''); setModels(null); setStatus({ kind: 'idle', text: '' }); }} className="text-[var(--text-muted)] hover:text-[var(--alert-red)]">Forget</button>}
+            {keyValue && <button onClick={() => { forgetKey(engine.provider); setKey(''); setModels(null); setListed(false); setStatus({ kind: 'idle', text: '' }); }} className="text-[var(--text-muted)] hover:text-[var(--alert-red)]">Forget</button>}
           </div>
         </div>
       ) : (
@@ -124,15 +127,13 @@ export function EngineSheet({ engine, setEngine, keyValue, setKey, onDone }: {
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center gap-2">
           <Overline>Model</Overline>
-          {(models?.length ?? 0) > 12 && (
-            <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filter" aria-label="Filter models" className={`${FIELD} ml-auto !w-32 h-6 px-2 text-[10px]`} />
-          )}
+          <span className="ml-auto text-[8.5px] font-mono tracking-[0.12em] uppercase text-[var(--text-muted)]">
+            {models ? (listed ? `${models.length} on this key` : 'Known names') : info.needsKey ? 'Recommended' : ''}
+          </span>
         </div>
-        <select value={engine.model} onChange={e => { const next = { ...engine, model: e.target.value }; setEngine(next); saveEngine(next); }} aria-label="Model"
-          className={`${FIELD} h-8 px-2 text-[11px] font-mono`}>
-          {shown.map(m => <option key={m.id} value={m.id} style={{ background: '#0C0E1A' }}>{m.name === m.id ? m.id : `${m.name} (${m.id})`}</option>)}
-        </select>
-        {!models && info.needsKey && <p className="text-[10px] text-[var(--text-muted)]">Check the key to list every model it can use.</p>}
+        <ModelPicker provider={engine.provider} models={models ?? known} value={engine.model} onChange={setModel}
+          suggested={info.suggested} defaultModel={info.defaultModel} listed={listed && !!models} />
+        {!models && info.needsKey && <p className="text-[10px] text-[var(--text-muted)]">Check the key to list every model it can use, grouped by family.</p>}
       </div>
 
       {info.needsKey && (
@@ -150,29 +151,178 @@ const EXAMPLES: { kind: Frame['kind']; text: string }[] = [
   { kind: 'number', text: 'Where will Brent crude settle on 31 December 2026, in USD a barrel?' },
 ];
 
-export function AskForm({ ready, providerName, onRun, onKey }: { ready: boolean; providerName: string; onKey: () => void; onRun: (input: { question: string; seed: string; depth: Depth; useFeeds: boolean }) => Promise<boolean> }) {
+/** The forecast's four stages, as the panel will show them working. */
+const STAGES = ['World model', 'Panel', 'Debate', 'Report'] as const;
+
+/* ───────────── Your data ───────────── */
+
+interface DataFile { id: number; name: string; text: string }
+
+/** Text a forecast can read. A PDF or Word file has to be saved as text first. */
+const TEXT_TYPES = ['txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'jsonl', 'log', 'xml', 'html', 'htm', 'yaml', 'yml'];
+const MAX_FILES = 8;
+const MAX_FILE_BYTES = 2_000_000;
+
+const fmtCount = (n: number) => (n < 1_000 ? `${n}` : n < 1_000_000 ? `${(n / 1_000).toFixed(n < 10_000 ? 1 : 0)}k` : `${(n / 1_000_000).toFixed(1)}M`);
+
+/** What a forecast reads: each file under its name, then anything pasted. */
+function assemble(files: DataFile[], paste: string): string {
+  const parts = files.map(f => `### ${f.name}\n${f.text}`);
+  if (paste.trim()) parts.push(files.length ? `### Notes\n${paste.trim()}` : paste.trim());
+  return parts.join('\n\n');
+}
+
+/** A file's text, or why it cannot be read. A web page is read as its visible text, which costs far fewer tokens. */
+async function readText(file: File): Promise<{ text: string } | { error: string }> {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  if (!TEXT_TYPES.includes(ext)) return { error: `${file.name}: text files only (${TEXT_TYPES.slice(0, 7).join(', ')} …). Save a PDF or Word file as text first.` };
+  if (file.size > MAX_FILE_BYTES) return { error: `${file.name} is over 2 MB.` };
+  let text = await file.text().catch(() => '');
+  if (text.includes(String.fromCharCode(0))) return { error: `${file.name} is not a text file.` };
+  if (ext === 'html' || ext === 'htm') {
+    // Parsed, never run: scripts and styles are dropped, the visible text kept.
+    const doc = new DOMParser().parseFromString(text, 'text/html');
+    doc.querySelectorAll('script, style, noscript, template').forEach(n => n.remove());
+    text = doc.body?.textContent ?? '';
+  }
+  text = text.replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  return text ? { text } : { error: `${file.name} is empty.` };
+}
+
+function YourData({ files, setFiles, paste, setPaste, scope, setScope, depth, providerName }: {
+  files: DataFile[]; setFiles: (f: DataFile[]) => void;
+  paste: string; setPaste: (v: string) => void;
+  scope: SeedScope; setScope: (s: SeedScope) => void;
+  depth: Depth; providerName: string;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const nextId = useRef(1);
+  const [note, setNote] = useState('');
+  const [over, setOver] = useState(false);
+  const chars = assemble(files, paste).length;
+  const cost = seedCost(chars, depth, scope);
+
+  const add = async (list: FileList | null) => {
+    if (!list?.length) return;
+    const room = MAX_FILES - files.length;
+    const picked = Array.from(list).slice(0, Math.max(0, room));
+    const read = await Promise.all(picked.map(readText));
+    const added: DataFile[] = [];
+    const problems: string[] = list.length > room ? [`Up to ${MAX_FILES} files.`] : [];
+    read.forEach((r, i) => {
+      if ('error' in r) problems.push(r.error);
+      else added.push({ id: nextId.current++, name: picked[i].name, text: r.text });
+    });
+    setFiles([...files, ...added]);
+    setNote(problems.join(' '));
+    if (input.current) input.current.value = '';
+  };
+
+  return (
+    <div className="flex flex-col gap-2.5 rounded-lg border p-3" style={{ borderColor: chars ? gold(0.35) : 'var(--border-secondary)', background: chars ? gold(0.03) : 'rgba(255,255,255,0.012)' }}>
+      <div
+        onDragOver={e => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
+        onDrop={e => { e.preventDefault(); setOver(false); void add(e.dataTransfer.files); }}
+        className="flex items-center gap-2.5 rounded-md border border-dashed px-3 py-2.5 transition-colors"
+        style={{ borderColor: over ? T.gold : 'var(--border-primary)', background: over ? gold(0.08) : undefined }}>
+        <Upload className="w-3.5 h-3.5 flex-shrink-0" style={{ color: over ? T.goldLight : T.mute }} />
+        <span className="flex-1 min-w-0 text-[10.5px] leading-snug text-[var(--text-secondary)]">
+          <button type="button" onClick={() => input.current?.click()} className="text-[var(--gold-light)] underline decoration-dotted underline-offset-2 hover:text-[var(--text-primary)]">Add files</button>
+          {' '}or drop them here
+          <span className="block text-[9.5px] text-[var(--text-muted)]">CSV, JSON, Markdown, text, logs, web pages</span>
+        </span>
+        <input ref={input} type="file" multiple hidden accept={TEXT_TYPES.map(t => `.${t}`).join(',')} onChange={e => void add(e.target.files)} aria-label="Add data files" />
+      </div>
+
+      {files.length > 0 && (
+        <ul className="flex flex-col gap-1">
+          {files.map(f => (
+            <li key={f.id} className="flex items-center gap-2 h-7 pl-2 pr-1 rounded-md border border-[var(--border-secondary)] bg-black/30">
+              <FileText className="w-3 h-3 flex-shrink-0 text-[var(--text-muted)]" />
+              <span className="flex-1 min-w-0 truncate text-[11px] text-[var(--text-primary)]" title={f.name}>{f.name}</span>
+              <span className="text-[9.5px] font-mono tabular-nums text-[var(--text-muted)]">{fmtCount(f.text.length)} chars</span>
+              <button type="button" onClick={() => setFiles(files.filter(x => x.id !== f.id))} aria-label={`Remove ${f.name}`}
+                className="w-5 h-5 rounded flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--alert-red)] hover:bg-[var(--hover-accent)]">
+                <X className="w-3 h-3" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <textarea value={paste} onChange={e => setPaste(e.target.value.slice(0, SEED_MAX))} rows={3} aria-label="Paste your data"
+        placeholder={files.length ? 'Notes to go with the files (optional)' : 'Or paste a report, notes, a table…'}
+        className={`${FIELD} rounded-md resize-y px-2.5 py-2 text-[11px] leading-relaxed`} />
+
+      {note && <p role="alert" className="text-[10px] leading-snug" style={{ color: T.orange }}>{note}</p>}
+
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between">
+          <Overline>Who reads it</Overline>
+        </div>
+        <Segmented id="seed-scope" size="sm" value={scope} onChange={setScope} options={[
+          { value: 'brief', label: 'World model', title: 'Read once, built into the brief every forecaster sees' },
+          { value: 'panel', label: 'Whole panel', title: 'Every forecaster and the report read it directly too' },
+        ]} />
+        <p className="text-[10px] leading-snug text-[var(--text-muted)]">
+          {scope === 'brief'
+            ? 'The world model reads all of it once and builds it into the brief every forecaster sees.'
+            : `As well, every forecaster in every round and the report agent read the first ${PANEL_SEED_MAX.toLocaleString()} characters directly, and can cite it.`}
+        </p>
+      </div>
+
+      <div className="flex items-center gap-2 rounded-md px-2.5 py-2" style={{ background: chars ? gold(0.07) : 'rgba(0,0,0,0.25)' }}>
+        <Database className="w-3.5 h-3.5 flex-shrink-0" style={{ color: chars ? T.goldLight : T.mute }} />
+        <span className="flex-1 min-w-0 text-[10.5px] leading-snug" style={{ color: chars ? T.text : T.mute }}>
+          {chars
+            ? <>About <span className="font-mono tabular-nums" style={{ color: T.goldLight }}>+{fmtCount(cost.tokens)}</span> input tokens on your {shortName(providerName)} key, over {cost.calls} call{cost.calls === 1 ? '' : 's'}</>
+            : 'Your data is billed to your own key, as input tokens: about one per four characters.'}
+        </span>
+      </div>
+      {chars > SEED_MAX && <p className="text-[10px] leading-snug" style={{ color: T.orange }}>That is {fmtCount(chars)} characters; a forecast reads the first {SEED_MAX.toLocaleString()}.</p>}
+    </div>
+  );
+}
+
+export function AskForm({ ready, providerName, onRun, onKey }: { ready: boolean; providerName: string; onKey: () => void; onRun: (input: { question: string; seed: string; seedScope: SeedScope; depth: Depth; useFeeds: boolean }) => Promise<boolean> }) {
   const [question, setQuestion] = useState('');
-  const [seed, setSeed] = useState('');
-  const [showSeed, setShowSeed] = useState(false);
+  const [files, setFiles] = useState<DataFile[]>([]);
+  const [paste, setPaste] = useState('');
+  const [scope, setScope] = useState<SeedScope>('brief');
+  const [showData, setShowData] = useState(false);
   const [depth, setDepth] = useState<Depth>('standard');
   const [useFeeds, setUseFeeds] = useState(true);
   const [starting, setStarting] = useState(false);
   const valid = question.trim().length >= 8;
+  const seed = assemble(files, paste);
+  const dataCost = seedCost(seed.length, depth, scope);
   const run = async () => {
     if (!ready || !valid || starting) return;
     setStarting(true);
-    const ok = await onRun({ question: question.trim(), seed, depth, useFeeds });
+    const ok = await onRun({ question: question.trim(), seed: seed.slice(0, SEED_MAX), seedScope: scope, depth, useFeeds });
     setStarting(false);
-    if (ok) { setQuestion(''); setSeed(''); }
+    if (ok) { setQuestion(''); setFiles([]); setPaste(''); }
   };
   const d = DEPTHS[depth];
+  // The stages that read the asker's data: the world model, and with the whole panel reading it, the debate and the report.
+  const reads = (i: number) => seed.length > 0 && (i === 0 || (scope === 'panel' && i >= 2));
   return (
     <section className="px-4 pt-4 pb-4 flex flex-col gap-4">
       <div>
-        <h3 className="text-[13px] font-semibold tracking-wide text-[var(--text-heading)]">Ask the panel</h3>
+        <Overline color={T.goldLight}>OI Forecast</Overline>
+        <h3 className="mt-1 text-[13px] font-semibold tracking-wide text-[var(--text-heading)]">Ask the panel</h3>
         <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-secondary)]">
-          A simulated panel of forecasters debates your question in rounds, grounded in live OSIRIS intelligence, while the analysis draws itself on the globe.
+          A simulated panel of forecasters debates your question in rounds, grounded in live OSIRIS intelligence and any data you add, while the analysis draws itself on the globe.
         </p>
+        <ol className="mt-2.5 grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-1" aria-label="How a forecast runs">
+          {STAGES.map((label, i) => (
+            <li key={label} className="relative flex items-center gap-1.5 h-7 px-1.5 rounded-md border border-[var(--border-secondary)] bg-white/[0.015]" title={reads(i) ? `${label} · reads your data` : label}>
+              <span className="w-4 h-4 rounded-full flex items-center justify-center text-[8.5px] font-mono flex-shrink-0" style={{ color: T.goldLight, background: gold(0.12) }}>{i + 1}</span>
+              <span className="text-[9.5px] leading-none truncate text-[var(--text-secondary)]">{label}</span>
+              {reads(i) && <Database className="absolute -top-1 -right-1 w-3 h-3 p-[1px] rounded-sm" style={{ color: T.goldLight, background: 'var(--bg-panel-solid)' }} aria-label="reads your data" />}
+            </li>
+          ))}
+        </ol>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -193,16 +343,25 @@ export function AskForm({ ready, providerName, onRun, onKey }: { ready: boolean;
             ))}
           </div>
         )}
-        <button onClick={() => setShowSeed(!showSeed)} aria-expanded={showSeed} className="self-start flex items-center gap-1.5 text-[10.5px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
-          <ChevronDown className="w-3 h-3 transition-transform" style={{ transform: showSeed ? 'rotate(180deg)' : undefined }} />
-          Add your own material{seed && ` · ${seed.length.toLocaleString()} characters`}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <button onClick={() => setShowData(!showData)} aria-expanded={showData}
+          className="flex items-center gap-2 h-8 px-3 rounded-md border transition-colors hover:bg-[var(--hover-accent)]"
+          style={{ borderColor: seed ? gold(0.35) : 'var(--border-secondary)', background: seed ? gold(0.04) : 'rgba(255,255,255,0.015)' }}>
+          <Database className="w-3.5 h-3.5 flex-shrink-0" style={{ color: seed ? T.goldLight : T.mute }} />
+          <span className="text-[11px] text-[var(--text-primary)]">Your data</span>
+          <span className="flex-1 min-w-0 text-right text-[9.5px] font-mono tabular-nums truncate text-[var(--text-muted)]">
+            {seed
+              ? `${files.length ? `${files.length} file${files.length === 1 ? '' : 's'} · ` : ''}${fmtCount(Math.min(seed.length, SEED_MAX))} chars · +${fmtCount(dataCost.tokens)} tokens`
+              : 'Optional · extra tokens'}
+          </span>
+          <ChevronDown className="w-3 h-3 flex-shrink-0 text-[var(--text-muted)] transition-transform" style={{ transform: showData ? 'rotate(180deg)' : undefined }} />
         </button>
         <AnimatePresence initial={false}>
-          {showSeed && (
-            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-              <textarea value={seed} onChange={e => setSeed(e.target.value.slice(0, 20_000))} rows={5} aria-label="Your material"
-                placeholder="Paste a report, notes or a draft. The panel reads it alongside the live feeds."
-                className={`${FIELD} rounded-lg resize-y px-3 py-2.5 text-[11px] leading-relaxed`} />
+          {showData && (
+            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }} className="overflow-hidden">
+              <YourData files={files} setFiles={setFiles} paste={paste} setPaste={setPaste} scope={scope} setScope={setScope} depth={depth} providerName={providerName} />
             </motion.div>
           )}
         </AnimatePresence>

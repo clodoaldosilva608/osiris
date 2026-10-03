@@ -13,6 +13,7 @@
  */
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { DEPTHS, FatalError, runEngine } from './engine';
+import type { SeedScope } from './depths';
 import { createChat, providerInfo, scrub, type ChatFn, type ProviderId } from './providers';
 import { applyEvent, currentAnswer, initialState, type RunState } from './state';
 import { postView } from './forecast';
@@ -62,6 +63,7 @@ const store: Store = (g.__osirisOi ??= { runs: new Map(), starts: new Map() });
 export interface StartInput {
   question: string;
   seed: string;
+  seedScope?: SeedScope;
   depth: Depth;
   useFeeds: boolean;
   provider: ProviderId;
@@ -151,7 +153,7 @@ export function startRun(input: StartInput, deps: StartDeps = {}): StartResult {
   const deadline = setTimeout(() => run.abort.abort(new Error('The run took too long and was stopped.')), LIMITS.deadlineMs);
 
   void runEngine(
-    { question: input.question, seed: input.seed, depth: input.depth, useFeeds: input.useFeeds },
+    { question: input.question, seed: input.seed, seedScope: input.seedScope, depth: input.depth, useFeeds: input.useFeeds },
     {
       chat,
       concurrency: deps.concurrency ?? providerInfo(input.provider).concurrency,

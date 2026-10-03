@@ -21,7 +21,7 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Check, Copy, GanttChart, Globe2, MessageSquare, Minimize2, Network, Orbit, Plus, Table2 } from 'lucide-react';
+import { Check, Copy, GanttChart, Globe2, Minimize2, Network, Plus, Table2 } from 'lucide-react';
 import type { OiClient } from '@/lib/oi/client';
 import { workspaceLayout } from '@/lib/oi/layout';
 import { resolve } from '@/lib/oi/research';
@@ -39,10 +39,11 @@ import { GraphView } from './GraphView';
 import { TimelineView } from './TimelineView';
 import { TableView } from './TableView';
 import { ObjectSearch, type ObjectSearchHandle } from './ObjectSearch';
+import { ModeSwitch, modeAccent, type OiMode } from './ModeSwitch';
 
 export type Stage = 'globe' | 'graph' | 'timeline' | 'table';
 export const STAGES: Stage[] = ['globe', 'graph', 'timeline', 'table'];
-export type WorkspaceMode = 'forecast' | 'assist';
+export type WorkspaceMode = OiMode;
 
 export interface WorkspaceProps {
   /** The forecast, or null before there is one. */
@@ -195,11 +196,9 @@ export function Workspace(p: WorkspaceProps) {
 
       {/* ── Left: the command column ── */}
       <aside className="glass-panel absolute pointer-events-auto flex flex-col overflow-hidden" style={{ left: L.gap, top: L.top, bottom: L.gap, width: L.left }} aria-label={p.mode === 'assist' ? 'OI Assist' : 'Forecast'}>
+        <span className="absolute inset-x-0 top-0 h-[2px] z-10 transition-colors duration-500" style={{ background: modeAccent(p.mode), opacity: 0.85 }} aria-hidden />
         <div className="px-3 pt-3 pb-2.5 border-b border-[var(--border-secondary)] flex-shrink-0">
-          <Segmented id="ws-mode" size="sm" value={p.mode} onChange={p.onMode} options={[
-            { value: 'forecast', label: s?.status === 'running' ? 'Forecast ●' : 'Forecast', icon: <Orbit className="w-3 h-3" />, title: 'The forecasting swarm' },
-            { value: 'assist', label: 'Assist', icon: <MessageSquare className="w-3 h-3" />, title: 'Talk to OI: it works the map and this workspace for you' },
-          ]} />
+          <ModeSwitch id="ws" mode={p.mode} onMode={p.onMode} forecastLive={s?.status === 'running'} assistBusy={p.assistBusy} />
         </div>
         {p.mode === 'assist' ? (
           <div className="flex-1 min-h-0 overflow-y-auto styled-scrollbar">{p.assistView}</div>

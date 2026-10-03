@@ -12,6 +12,7 @@ import {
   PROVIDERS, ProviderError, createChat, isPlausibleKey, isPlausibleModel, isProviderId, providerInfo, type ChatFn, type ProviderId,
 } from './providers';
 import { LIMITS, startRun, type Run, type StartDeps } from './runs';
+import { SEED_MAX, type SeedScope } from './depths';
 import { oneOf, text } from './parse';
 import type { Depth } from './types';
 
@@ -89,7 +90,7 @@ export function credentials(req: Request, body: Record<string, unknown> = {}): C
 }
 
 /** Free text for a seed: newlines kept, control characters out, capped. */
-export function seedText(v: unknown, max = 20_000): string {
+export function seedText(v: unknown, max = SEED_MAX): string {
   if (typeof v !== 'string') return '';
   return v.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, ' ').trim().slice(0, max);
 }
@@ -97,6 +98,7 @@ export function seedText(v: unknown, max = 20_000): string {
 export interface PredictArgs {
   question?: unknown;
   seed?: unknown;
+  seed_scope?: unknown;
   depth?: unknown;
   use_feeds?: unknown;
 }
@@ -114,6 +116,7 @@ export function startPrediction(args: PredictArgs, creds: Credentials, ip: strin
   return startRun({
     question,
     seed: seedText(args.seed),
+    seedScope: oneOf(args.seed_scope, ['brief', 'panel'] as const, 'brief') as SeedScope,
     depth,
     useFeeds: args.use_feeds !== false && args.use_feeds !== 'false',
     provider: creds.provider,

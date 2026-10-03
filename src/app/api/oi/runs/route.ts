@@ -7,7 +7,7 @@ import { credentials, disabled, disabledResponse, fail, json, readBody, siteOrig
  *
  * POST /api/oi/runs
  *   headers  X-OI-Provider, X-OI-Key (or Authorization: Bearer), X-OI-Model (optional)
- *   body     { question, seed?, depth?: quick|standard|deep, use_feeds?: boolean }
+ *   body     { question, seed?, seed_scope?: brief|panel, depth?: quick|standard|deep, use_feeds?: boolean }
  *
  * Answers 202 at once with the run's id and token. Follow it on
  * /api/oi/runs/{id}/events (SSE), or poll /api/oi/runs/{id}?wait=30.
@@ -16,8 +16,9 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
   if (disabled()) return disabledResponse();
-  const body = await readBody(req, 64_000);
-  if (!body) return fail(400, 'Send a JSON body of at most 64 KB: { "question": "…" }.');
+  // Room for a seed of SEED_MAX characters, escaped as JSON.
+  const body = await readBody(req, 240_000);
+  if (!body) return fail(400, 'Send a JSON body of at most 240 KB: { "question": "…" }.');
   const creds = credentials(req, body);
   if ('error' in creds) return fail(400, creds.error);
 
