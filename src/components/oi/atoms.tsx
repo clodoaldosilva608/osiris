@@ -6,7 +6,7 @@
 import { createElement, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Activity, Building2, CandlestickChart, CircleUser, Crown, Database, Eye, Factory, FileText, GitBranch, Landmark, Link2,
+  Activity, BookOpen, Building2, CandlestickChart, CircleUser, Crown, Database, Eye, Factory, FileText, GitBranch, Globe2, Landmark, Link2,
   MapPin, MessageSquare, Newspaper, Quote, ScrollText, Signpost, TrendingUp, Users, type LucideIcon, type LucideProps,
 } from 'lucide-react';
 import { leader, outcomeColor, postView } from '@/lib/oi/forecast';
@@ -132,7 +132,7 @@ export function ViewTag({ post, frame }: { post: Post; frame: Frame | null }) {
 const ACTOR_ICON: Record<string, LucideIcon> = {
   state: Landmark, leader: Crown, organisation: Building2, company: Factory, market: TrendingUp, group: Users, place: MapPin,
 };
-const SOURCE_ICON: Record<string, LucideIcon> = { news: Newspaper, quake: Activity, market: CandlestickChart, data: Database };
+const SOURCE_ICON: Record<string, LucideIcon> = { news: Newspaper, quake: Activity, market: CandlestickChart, data: Database, web: Globe2, wiki: BookOpen };
 export const LINK_ICON: Record<LinkKind, LucideIcon> = { relation: Link2, evidence: FileText, reply: MessageSquare, focus: Eye, cite: Quote };
 
 /** The icon for an object, from its research key's prefix and its subtype. */

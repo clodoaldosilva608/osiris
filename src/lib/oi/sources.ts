@@ -1,12 +1,15 @@
 /**
  * OSIRIS OI: what the panel quotes, and where it came from.
  *
- * Every panelist backs each post with quotes from numbered sources: an item
- * of the live feed (`c3`), a passage the world model lifted from the asker's
- * own data (`d2`), or, when the whole panel reads it, that data itself
- * (`data`). A quote is checked against its source here and marked exact when
- * its words are really there, so a reader following the thread from the
- * report to a panelist to a source can trust the last step. Pure and
+ * Every panelist backs each post with quotes from numbered sources: a news
+ * article the research found (`w2`), background (`b1`), an item of the live
+ * feed (`c3`), a passage the world model lifted from the asker's own data
+ * (`d2`), or, when the whole panel reads it, that data itself (`data`). Each
+ * quote says which way it moved the panelist's forecast and why, so the
+ * figure is attributed to the evidence behind it. A quote is checked against
+ * what its source says here and marked exact when its words are really
+ * there, so a reader following the thread from the report to a panelist to
+ * a source, and on to the published page, can trust every step. Pure and
  * client-safe.
  */
 import type { Citation, ContextItem } from './types';
@@ -93,22 +96,43 @@ export function wholeData(seed: string): ContextItem {
  */
 export function sourceTexts(items: ContextItem[], panelData = ''): Map<string, string> {
   const out = new Map<string, string>();
-  for (const c of items) out.set(c.id, c.id === DATA_ID ? panelData : c.kind === 'data' ? c.title : `${c.title} ${c.source}`);
+  for (const c of items) out.set(c.id, c.id === DATA_ID ? panelData : c.kind === 'data' ? c.title : [c.title, c.excerpt, c.source].filter(Boolean).join(' '));
   return out;
+}
+
+/** Which way a model says something moves a forecast: toward YES or higher, toward NO or lower, or neither. */
+export function pushOf(v: unknown): 'yes' | 'no' | 'neutral' {
+  const s = typeof v === 'string' ? v.toLowerCase().trim() : '';
+  if (!s || /^(neutral|context|none|mixed|both|unclear|n\/a)/.test(s)) return 'neutral';
+  return /^(no|down|lower|against|decrease|less|reduce|cut)/.test(s) ? 'no' : 'yes';
+}
+
+/** A choice question's outcome, as the model named it. */
+function outcomeOf(v: unknown, outcomes: string[]): string {
+  const s = text(v, 60).toLowerCase();
+  if (!s || !outcomes.length) return '';
+  return outcomes.find(o => o.toLowerCase() === s) ?? outcomes.find(o => s.includes(o.toLowerCase()) || o.toLowerCase().includes(s)) ?? '';
 }
 
 /**
  * A reply's citations: up to `max`, of known sources only, one per source,
  * each quote checked against what the source says.
  */
-export function parseCites(raw: unknown, sources: Map<string, string>, max = 3): Citation[] {
+export function parseCites(raw: unknown, sources: Map<string, string>, max = 3, outcomes: string[] = []): Citation[] {
   const out: Citation[] = [];
   for (const c of list(raw, 6)) {
     const o = c && typeof c === 'object' ? (c as Record<string, unknown>) : {};
     const source = text(o.source ?? o.id, 12).toLowerCase().replace(/^\[|\]$/g, '');
     const quote = text(o.quote ?? o.text, 240).replace(/^["“”'‘’]+|["“”'‘’]+$/g, '').trim();
     if (!sources.has(source) || !quote || out.some(x => x.source === source)) continue;
-    out.push({ source, quote, exact: quoteIn(quote, sources.get(source)!) });
+    const favors = outcomeOf(o.favors, outcomes);
+    const why = text(o.why ?? o.because ?? o.reason, 160);
+    out.push({
+      source, quote, exact: quoteIn(quote, sources.get(source)!),
+      push: pushOf(o.effect ?? o.push ?? o.direction),
+      ...(favors ? { favors } : {}),
+      ...(why ? { why } : {}),
+    });
     if (out.length >= max) break;
   }
   return out;
@@ -123,4 +147,41 @@ export function sourceIds(raw: unknown, sources: Set<string>, max = 4): string[]
     if (out.length >= max) break;
   }
   return out;
+}
+
+export interface LedgerRow {
+  source: string;
+  /** Times quoted, across every round. */
+  quoted: number;
+  /** The panelists who quoted it. */
+  agents: string[];
+  /** Which way it pushed them, quote by quote. */
+  yes: number;
+  no: number;
+  neutral: number;
+  /** choice: the outcomes it was quoted for. */
+  favors: Record<string, number>;
+  /** Quotes found word for word. */
+  exact: number;
+}
+
+/**
+ * The evidence behind the panel, source by source: how often each was
+ * quoted, by whom, and which way it pushed them. Most quoted first. It is
+ * what lets a reader attribute the panel's number to its evidence.
+ */
+export function evidenceLedger(posts: { agent: string; cites?: Citation[] }[]): LedgerRow[] {
+  const rows = new Map<string, LedgerRow>();
+  for (const p of posts) {
+    for (const c of p.cites ?? []) {
+      const r = rows.get(c.source) ?? { source: c.source, quoted: 0, agents: [], yes: 0, no: 0, neutral: 0, favors: {}, exact: 0 };
+      r.quoted++;
+      if (!r.agents.includes(p.agent)) r.agents.push(p.agent);
+      r[c.push ?? 'neutral']++;
+      if (c.favors) r.favors[c.favors] = (r.favors[c.favors] ?? 0) + 1;
+      if (c.exact) r.exact++;
+      rows.set(c.source, r);
+    }
+  }
+  return [...rows.values()].sort((a, b) => b.quoted - a.quoted || b.agents.length - a.agents.length || a.source.localeCompare(b.source));
 }

@@ -8,6 +8,7 @@
 import type { ChatFn, ChatRequest } from './providers';
 import { demoAssist } from './assist/demo';
 import { ASSIST_SYSTEM_START } from './assist/protocol';
+import { planFallback } from './plan';
 
 const ACTORS = [
   { id: 'usa', name: 'United States', kind: 'state', country: 'US', place: 'Washington', lat: 38.9, lng: -77.04, lean: 0.3 },
@@ -28,23 +29,24 @@ const RELATIONS: [string, string, string, number][] = [
   ['markets', 'usa', 'influence', 0.7], ['brazil', 'china', 'trade', 0.6], ['japan', 'china', 'rivalry', 0.5], ['india', 'usa', 'negotiation', 0.4],
 ];
 
-const PEOPLE = [
-  ['Mara Ellison', 'Sovereign risk analyst', 'New York, United States', 40.71, -74.01],
-  ['Kenji Arakawa', 'Energy desk trader', 'Tokyo, Japan', 35.68, 139.69],
-  ['Lucía Ferreyra', 'Political economist', 'Buenos Aires, Argentina', -34.6, -58.38],
-  ['Tomasz Wrona', 'Security analyst', 'Warsaw, Poland', 52.23, 21.01],
-  ['Amara Okafor', 'Commodities strategist', 'Lagos, Nigeria', 6.52, 3.38],
-  ['Farid Haddad', 'Former diplomat', 'Beirut, Lebanon', 33.89, 35.5],
-  ['Priya Raman', 'Superforecaster', 'Bengaluru, India', 12.97, 77.59],
-  ['Henrik Lund', 'Historian of crises', 'Oslo, Norway', 59.91, 10.75],
-  ['Wei Lin', 'Trade policy researcher', 'Singapore', 1.35, 103.82],
-  ['Sofia Marchetti', 'Central bank watcher', 'Frankfurt, Germany', 50.11, 8.68],
-  ['Diego Salas', 'Shipping analyst', 'Panama City, Panama', 8.98, -79.52],
-  ['Nadia Petrova', 'Contrarian macro investor', 'Dubai, UAE', 25.2, 55.27],
-  ['Joon-ho Park', 'Defence journalist', 'Seoul, South Korea', 37.57, 126.98],
-  ['Grace Mwangi', 'Development economist', 'Nairobi, Kenya', -1.29, 36.82],
-  ['Liam Byrne', 'Sell-side strategist', 'London, United Kingdom', 51.51, -0.13],
-  ['Ana Costa', 'Climate risk modeller', 'São Paulo, Brazil', -23.55, -46.63],
+/** The panel: anonymous, each a role and a place. */
+const PANEL = [
+  ['Sovereign risk analyst', 'New York, United States', 40.71, -74.01],
+  ['Energy desk trader', 'Tokyo, Japan', 35.68, 139.69],
+  ['Political economist', 'Buenos Aires, Argentina', -34.6, -58.38],
+  ['Security analyst', 'Warsaw, Poland', 52.23, 21.01],
+  ['Commodities strategist', 'Lagos, Nigeria', 6.52, 3.38],
+  ['Former diplomat', 'Beirut, Lebanon', 33.89, 35.5],
+  ['Superforecaster', 'Bengaluru, India', 12.97, 77.59],
+  ['Historian of crises', 'Oslo, Norway', 59.91, 10.75],
+  ['Trade policy researcher', 'Singapore', 1.35, 103.82],
+  ['Central bank watcher', 'Frankfurt, Germany', 50.11, 8.68],
+  ['Shipping analyst', 'Panama City, Panama', 8.98, -79.52],
+  ['Contrarian macro investor', 'Dubai, UAE', 25.2, 55.27],
+  ['Defence journalist', 'Seoul, South Korea', 37.57, 126.98],
+  ['Development economist', 'Nairobi, Kenya', -1.29, 36.82],
+  ['Sell-side strategist', 'London, United Kingdom', 51.51, -0.13],
+  ['Climate risk modeller', 'São Paulo, Brazil', -23.55, -46.63],
 ] as const;
 
 function hash(s: string): number {
@@ -73,12 +75,12 @@ const figure = (u: string, label: string) => {
 /** The first words of a text, cut at a word, as a quote copied from it. */
 const opening = (t: string, words = 9) => t.split(/\s+/).slice(0, words).join(' ').replace(/[,;:]$/, '');
 
-/** The sources a prompt lists, by id, with the words each says. */
+/** The sources a prompt lists, by id, with the words each says: its excerpt where it has one, else its headline. */
 function feedSources(u: string): { id: string; says: string }[] {
-  return [...u.matchAll(/^\[([cd]\d+)\] (.*)$/gm)].map(m => {
+  return [...u.matchAll(/^\[([cdwb]\d+)\] (.*)$(?:\n {4}"(.*)")?/gm)].map(m => {
     const rest = m[2];
     const quoted = /— "(.*)"$/.exec(rest);
-    return { id: m[1], says: quoted ? quoted[1] : rest.split(' — ').slice(1).join(' — ') };
+    return { id: m[1], says: m[3] || (quoted ? quoted[1] : rest.split(' — ').slice(1).join(' — ')) };
   }).filter(x => x.says.trim());
 }
 
@@ -86,8 +88,12 @@ function answer(req: ChatRequest): string {
   // OI Assist has its own script: the conversation, not the forecast pipeline.
   if (req.system.startsWith(ASSIST_SYSTEM_START)) return demoAssist(req.user);
   const u = req.user;
+  if (u.includes('Plan the research')) {
+    const question = (u.match(/QUESTION: (.*)/)?.[1] ?? '').trim();
+    return JSON.stringify(planFallback(question));
+  }
   if (u.includes('Build the world model')) {
-    const cites = [...u.matchAll(/^\[(c\d+)\]/gm)].map(m => m[1]).slice(0, 5);
+    const cites = [...u.matchAll(/^\[([cwb]\d+)\]/gm)].map(m => m[1]).slice(0, 5);
     const question = (u.match(/QUESTION: (.*)/)?.[1] ?? 'The event happens').trim();
     // Passages of the asker's data, copied as they are: its longer lines, headings left out.
     const seed = /SEED \(material[^\n]*\n<<<\n([\s\S]*?)\n>>>/.exec(u)?.[1] ?? '';
@@ -112,10 +118,10 @@ function answer(req: ChatRequest): string {
   if (u.includes('Assemble a panel of')) {
     const n = Number(u.match(/panel of (\d+)/)?.[1] ?? 8);
     return JSON.stringify({
-      agents: PEOPLE.slice(0, n).map(([name, role, place, lat, lng], i) => ({
-        id: slug(name), name, role, place, lat, lng,
+      agents: PANEL.slice(0, n).map(([role, place, lat, lng], i) => ({
+        role, place, lat, lng,
         lens: 'Weighs incentives over rhetoric.', bias: 'Anchoring on the last crisis.',
-        watches: [ACTORS[i % ACTORS.length].id, ACTORS[(i + 3) % ACTORS.length].id], prior: 0.2 + 0.5 * hash(name),
+        watches: [ACTORS[i % ACTORS.length].id, ACTORS[(i + 3) % ACTORS.length].id], prior: 0.2 + 0.5 * hash(role),
       })),
     });
   }
@@ -128,10 +134,22 @@ function answer(req: ChatRequest): string {
     const breaking = u.includes('BREAKING') ? 0.08 : 0;
     const target = others[Math.floor(hash(name + round) * others.length)];
     const kind = /^KIND: (\w+)/m.exec(u)?.[1] ?? 'binary';
-    // Quote a source or two, word for word, when there is one to quote.
-    const sources = u.includes('"cites"') ? feedSources(u) : [];
+    // Quote a source or two, word for word, preferring the research and the asker's data to the
+    // live headlines, and say which way each one pushes.
+    const listed = u.includes('"cites"') ? feedSources(u) : [];
+    const preferred = listed.filter(x => /^[wbd]/.test(x.id));
+    const sources = preferred.length ? preferred : listed;
     const pick = (k: number) => sources[Math.floor(hash(name + round + k) * sources.length)];
-    const cites = [...new Set([pick(0), pick(1)].filter(Boolean))].map(src => ({ source: src.id, quote: opening(src.says) }));
+    const first = /^OUTCOMES: 1\. (.+?)(?:  2\.|$)/m.exec(u)?.[1]?.trim();
+    const cites = [...new Set([pick(0), pick(1)].filter(Boolean))].map((src, k) => {
+      const up = hash(src.id + name) > 0.45;
+      const effect = kind === 'choice' ? 'yes' : kind === 'number' ? (up ? 'up' : 'down') : (up ? 'yes' : 'no');
+      return {
+        source: src.id, quote: opening(src.says, 12), effect,
+        ...(kind === 'choice' && first ? { favors: first } : {}),
+        why: k === 0 ? (up ? 'Makes the main actors more likely to move.' : 'Shows the obstacles are still in place.') : 'Context on the timing.',
+      };
+    });
     const shape: Record<string, unknown> = {};
     if (kind === 'choice') {
       const n = (u.match(/^OUTCOMES: (.*)$/m)?.[1].match(/\d+\./g) ?? []).length || 4;
@@ -152,8 +170,8 @@ function answer(req: ChatRequest): string {
       ...shape,
       confidence: 0.4 + 0.5 * hash(name + 'c'),
       post: round === 1
-        ? `Opening view from ${name.split(' ')[0]}: the base rate is the anchor, and nothing in the feed moves me far off it yet.`
-        : `Round ${round}: ${target ? `${target.replace(/_/g, ' ')} makes a fair point, ` : ''}but the incentives still cut the other way.`,
+        ? `The base rate is my anchor${cites[0] ? `; ${cites[0].source} moves me ${cites[0].effect === 'no' || cites[0].effect === 'down' ? 'down' : 'up'} from it` : ''}.`
+        : `${target ? `${target.replace(/^agent_(\d+)$/, 'Agent $1')} makes a fair point, ` : ''}but ${cites[0] ? `${cites[0].source} still ${cites[0].effect === 'no' || cites[0].effect === 'down' ? 'holds me down' : 'keeps me up'}` : 'the incentives cut the other way'}.`,
       reasoning: 'Base rate first, then the strongest actor incentives.',
       ...(cites.length ? { cites } : {}),
       replies: target ? [{ to: target, stance: hash(target + round) > 0.5 ? 'agree' : 'disagree', point: 'Your timeline looks too tight.' }] : [],
@@ -165,7 +183,8 @@ function answer(req: ChatRequest): string {
     const swarm = Number(u.match(/consensus is (\d+)%/)?.[1] ?? 40) / 100;
     const kind = /^KIND: (\w+)/m.exec(u)?.[1] ?? 'binary';
     const median = parseFloat(u.match(/median is ([-0-9.,]+)/)?.[1]?.replace(/,/g, '') ?? '');
-    const ids = feedSources(u).map(x => x.id);
+    const listedIds = feedSources(u).map(x => x.id);
+    const ids = listedIds.filter(id => /^[wbd]/.test(id)).length ? listedIds.filter(id => /^[wbd]/.test(id)) : listedIds;
     const sourced = (k: number) => (ids.length ? { sources: [ids[k % ids.length], ids[(k + 2) % ids.length]].filter((v, i, a) => a.indexOf(v) === i) } : {});
     const answerFields = kind === 'choice'
       ? { shares: [0.46, 0.29, 0.17, 0.08] }

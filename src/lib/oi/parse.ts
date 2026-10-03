@@ -254,20 +254,22 @@ export function parseWorld(raw: Record<string, unknown>, question: string, conte
 
 /* ───────────────────────────── The panel ───────────────────────────── */
 
+/**
+ * The panel. Panelists are anonymous: Agent 1, Agent 2… in the order given,
+ * each known by their role, so no simulated view is ever put in a real or
+ * realistic-sounding person's mouth. Whatever name a model adds is ignored.
+ */
 export function parseAgents(raw: Record<string, unknown>, count: number, actorIds: Set<string>): Agent[] {
   const agents: Agent[] = [];
-  const ids = new Set<string>();
-  for (const [i, a] of list(raw.agents, count).entries()) {
+  for (const a of list(raw.agents, count)) {
     const o = obj(a);
-    const name = text(o.name, 60);
-    if (!name) continue;
-    let id = slug(o.id ?? name, `agent_${i + 1}`);
-    while (ids.has(id)) id = `${id}_${i}`;
-    ids.add(id);
+    const role = text(o.role ?? o.title ?? o.job, 120);
+    if (!role) continue;
+    const n = agents.length + 1;
     agents.push({
-      id,
-      name,
-      role: text(o.role, 120, 'Analyst'),
+      id: `agent_${n}`,
+      name: `Agent ${n}`,
+      role,
       lens: text(o.lens, 200),
       bias: text(o.bias, 160),
       prior: prob(o.prior, 0.5),
@@ -329,7 +331,7 @@ export function parsePost(
     changed: text(raw.changed, 200),
     replies,
     focus: list(raw.focus, 3).map(f => slug(f, '')).filter(f => actorIds.has(f)),
-    cites: sources ? parseCites(raw.cites ?? raw.citations ?? raw.quotes, sources) : [],
+    cites: sources ? parseCites(raw.cites ?? raw.citations ?? raw.quotes, sources, 3, frame?.kind === 'choice' ? frame.outcomes : []) : [],
   };
 }
 

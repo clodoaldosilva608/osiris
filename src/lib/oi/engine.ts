@@ -9,24 +9,27 @@
  * to afterwards. No MiroFish code is used; this is written from that
  * description, for OSIRIS's feeds and globe, on any provider.
  *
- *   1. context   OSIRIS's live feeds, cut to the question
+ *   1. context   research on the open web (news with its links, background) and
+ *                OSIRIS's live feeds, cut to the question
  *   2. graph     the proposition, base rate, actors on the globe and their relations
- *   3. agents    a deliberately diverse panel of fictional forecasters
- *   4. simulate  rounds of posts, replies and updates; injected events land between rounds
- *   5. report    a calibrated forecast with drivers, scenarios and signposts
+ *   3. agents    a deliberately diverse, anonymous panel: Agent 1, Agent 2…, each a role
+ *   4. simulate  rounds of posts, replies and updates, every post attributed to the
+ *                sources that moved it; injected events land between rounds
+ *   5. report    a calibrated forecast with drivers (each sourced), scenarios and signposts
  *
  * Everything is announced as events (see ./types), which is how the globe
  * draws the analysis while it happens.
  */
 import { roundStatFor } from './aggregate';
 import { DEPTHS, PANEL_SEED_MAX, estimateCalls, type SeedScope } from './depths';
-import { gatherContext } from './context';
+import { gatherContext, onTopic, terms } from './context';
 import { extractJson, parseAgents, parsePost, parseReport, parseWorld } from './parse';
 import {
-  SYSTEM, agentsPrompt, askAgentPrompt, askReportPrompt, feedBlock, reportPrompt, turnPrompt, worldBrief, worldPrompt,
+  SYSTEM, agentsPrompt, askAgentPrompt, askReportPrompt, feedBlock, reportPrompt, researchPrompt, turnPrompt, worldBrief, worldPrompt,
 } from './prompts';
 import { ProviderError, type ChatFn, type ChatRequest } from './providers';
 import { dataExcerpts, sourceTexts, wholeData } from './sources';
+import { parsePlan, researchWeb, type ResearchPlan } from './web';
 import type { RunState } from './state';
 import type { Agent, ContextItem, Depth, Link, OiEvent, Post, RoundStat, Usage } from './types';
 
@@ -50,6 +53,8 @@ export interface EngineDeps {
   /** Events the operator injected since the last call, oldest first. */
   takeInjects: () => string[];
   gather?: (question: string, seed: string, limit: number) => Promise<ContextItem[]>;
+  /** The open-web research; tests pass their own. */
+  research?: (plan: ResearchPlan, question: string, limit: number, signal: AbortSignal) => Promise<ContextItem[]>;
   today?: string;
 }
 
@@ -148,10 +153,27 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
   const today = deps.today ?? new Date().toISOString().slice(0, 10);
   const depth = DEPTHS[input.depth];
 
-  // 1. Context
-  s.emit({ t: 'phase', phase: 'context', label: input.useFeeds ? 'Reading the live OSIRIS feeds' : 'Reading the seed material' });
-  const gather = deps.gather ?? gatherContext;
-  const context = input.useFeeds ? await gather(input.question, input.seed, depth.feed).catch(() => []) : [];
+  // 1. Research: the open web on the question (news with its links, and background), and the live OSIRIS feeds.
+  s.emit({ t: 'phase', phase: 'context', label: input.useFeeds ? 'Researching the question: the news, the background, the live feeds' : 'Reading the seed material' });
+  let context: ContextItem[] = [];
+  if (input.useFeeds) {
+    const feeds = (deps.gather ?? gatherContext)(input.question, input.seed, depth.feed).catch(() => [] as ContextItem[]);
+    // The model plans the searches; without a plan, the question's own names and words do.
+    const planned = await s.json({ user: researchPrompt(input.question, input.seed, today), maxTokens: 400, temperature: 0.2, timeoutMs: 60_000 })
+      .catch(err => { if (err instanceof FatalError) throw err; return null; });
+    s.check();
+    const research = deps.research ?? researchWeb;
+    const [web, feed] = await Promise.all([
+      research(parsePlan(planned, input.question), input.question, depth.research, s.signal).catch(() => [] as ContextItem[]),
+      feeds,
+    ]);
+    // With real coverage of the question in hand, the feed's headlines about something else go:
+    // they would only be quoted as evidence for what they do not bear on.
+    const words = terms(input.question);
+    const covered = web.filter(c => c.kind === 'web').length >= 3;
+    const kept = covered ? feed.filter(c => c.kind !== 'news' || onTopic(c, words)) : feed;
+    context = [...web, ...kept.map((c, i) => ({ ...c, id: `c${i + 1}` }))];
+  }
   s.check();
   s.emit({ t: 'context', items: context });
   // With the whole panel reading it, every turn and the report quote the head of the asker's data.
@@ -277,7 +299,7 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
     estimate: last.value ? { value: last.value.median, low: last.value.low, high: last.value.high } : undefined,
   };
   const report = parseReport(
-    await s.json({ user: reportPrompt({ frame, brief, rounds: stats, finals, injects: injected, evidence, data, citable, today }), maxTokens: 3000, temperature: 0.3, timeoutMs: 150_000 }),
+    await s.json({ user: reportPrompt({ frame, brief, rounds: stats, finals, injects: injected, evidence, data, citable, posts, today }), maxTokens: 3000, temperature: 0.3, timeoutMs: 150_000 }),
     swarm, actorIds, frame, new Set(texts.keys()),
   );
   s.emit({ t: 'report', report });

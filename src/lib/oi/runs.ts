@@ -12,7 +12,7 @@
  * sees the same runs.
  */
 import { randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
-import { DEPTHS, FatalError, runEngine } from './engine';
+import { DEPTHS, FatalError, runEngine, type EngineDeps } from './engine';
 import type { SeedScope } from './depths';
 import { createChat, providerInfo, scrub, type ChatFn, type ProviderId } from './providers';
 import { applyEvent, currentAnswer, initialState, type RunState } from './state';
@@ -76,6 +76,7 @@ export interface StartDeps {
   /** For tests: a chat function in place of the provider's. */
   chat?: ChatFn;
   gather?: (question: string, seed: string, limit: number) => Promise<ContextItem[]>;
+  research?: EngineDeps['research'];
   concurrency?: number;
 }
 
@@ -161,6 +162,7 @@ export function startRun(input: StartInput, deps: StartDeps = {}): StartResult {
       signal: run.abort.signal,
       takeInjects: () => run.injects.splice(0),
       gather: deps.gather,
+      research: deps.research,
     },
   ).then(
     () => emit(run, { t: 'end', status: 'done' }),
@@ -332,7 +334,7 @@ export function runSummary(run: Run, origin: string) {
     actors: s.actors.map(a => ({ id: a.id, name: a.name, kind: a.kind, place: a.place, lat: a.lat, lng: a.lng, role: a.role, lean: a.lean })),
     // What the panel and the report quoted: the ids in drivers' `sources` and panelists' `quotes` point here.
     sources: s.context.map(c => ({
-      id: c.id, kind: c.kind, title: c.title, source: c.source, place: c.place || undefined, published: c.published || undefined,
+      id: c.id, kind: c.kind, title: c.title, source: c.source, url: c.url, excerpt: c.excerpt, place: c.place || undefined, published: c.published || undefined,
       quoted: s.links.filter(l => l.kind === 'cite' && l.to === `c:${c.id}`).length,
     })),
     panel: s.agents.map(a => {

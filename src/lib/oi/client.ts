@@ -14,7 +14,7 @@ import type { ProviderId } from './providers';
 import { applyEvent, currentAnswer, currentProbability, initialState, type RunState } from './state';
 import { directionWord } from './forecast';
 import { questionBlock, trajectoryLine } from './prompts';
-import type { Depth, RunStatus, Stamped } from './types';
+import type { Citation, Depth, RunStatus, Stamped } from './types';
 import type { SeedScope } from './depths';
 
 export interface Engine {
@@ -325,10 +325,12 @@ export function toMarkdown(s: RunState, url: string): string {
   // The thread back to the words: what each panelist quoted last, then every source quoted or cited.
   const names = new Map(s.agents.map(a => [a.id, a.name]));
   const last = [...new Map(s.posts.map(p => [p.agent, p])).values()].filter(p => p.cites?.length);
-  if (last.length) lines.push('', '## What the panel quoted', ...last.flatMap(p => p.cites!.map(c => `- **${names.get(p.agent) ?? p.agent}** (round ${p.round}): “${c.quote}” [${c.source}]${c.exact ? '' : ' (paraphrase)'}`)));
+  const roles = new Map(s.agents.map(a => [a.id, a.role]));
+  const way = (c: Citation) => (c.favors ? `for ${c.favors}` : c.push === 'neutral' || !c.push ? 'context' : directionWord(s.frame, c.push, ''));
+  if (last.length) lines.push('', '## What the panel quoted', ...last.flatMap(p => p.cites!.map(c => `- **${names.get(p.agent) ?? p.agent}** (${roles.get(p.agent) ?? 'panelist'}, round ${p.round}): “${c.quote}” [${c.source}], ${way(c)}${c.why ? `: ${c.why}` : ''}${c.exact ? '' : ' (paraphrase)'}`)));
   const used = new Set(s.links.filter(l => l.kind === 'cite' || l.kind === 'evidence').flatMap(l => [l.from, l.to]).filter(k => k.startsWith('c:')).map(k => k.slice(2)));
   const sources = s.context.filter(c => used.has(c.id));
-  if (sources.length) lines.push('', '## Sources', ...sources.map(c => `- [${c.id}] ${c.kind === 'data' && c.id !== 'data' ? `“${c.title}”` : c.title} (${[c.source, c.place, c.published.slice(0, 10)].filter(Boolean).join(', ')})`));
+  if (sources.length) lines.push('', '## Sources', ...sources.map(c => `- [${c.id}] ${c.kind === 'data' && c.id !== 'data' ? `“${c.title}”` : c.url ? `[${c.title.replace(/[[\]]/g, '')}](${c.url})` : c.title} (${[c.source, c.place, c.published.slice(0, 10)].filter(Boolean).join(', ')})`));
   lines.push('', `Run on ${s.provider} / ${s.model}, ${s.usage.calls} model calls. Watch: ${url}`, '', '_OSIRIS OI: swarm forecasting after MiroFish, rebuilt natively. A simulation, not a guarantee._');
   return lines.filter(l => l !== '').join('\n').replace(/\n(#+ )/g, '\n\n$1');
 }

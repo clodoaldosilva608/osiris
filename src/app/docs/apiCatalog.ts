@@ -624,7 +624,7 @@ export const API_GROUPS: ApiGroup[] = [
         returns: ['id', 'status', 'phase', 'watch_url', 'events_url', 'run_token', 'progress'],
         headers: { 'X-OI-Provider': 'openai', 'X-OI-Key': '$YOUR_MODEL_KEY', 'X-OI-Model': 'gpt-5-mini' },
         requiresAuth: true,
-        notes: '`depth` is `quick` (6 agents × 2 rounds, about 15 model calls), `standard` (10 × 3, about 33) or `deep` (16 × 4, about 67). `seed` takes up to 100,000 characters of your own data (about 25,000 input tokens), read once by the world model; with `seed_scope: "panel"` every forecaster in every round and the report agent also read its first 8,000 characters, at about 2,000 more input tokens a call. `use_feeds` (default true) grounds the run in OSIRIS news, quakes and markets. Keep `run_token`: it is not shown again. Two runs at once and eight per ten minutes per address.',
+        notes: '`depth` is `quick` (6 agents × 2 rounds, about 16 model calls), `standard` (10 × 3, about 34) or `deep` (16 × 4, about 68). `seed` takes up to 100,000 characters of your own data (about 25,000 input tokens), read once by the world model; with `seed_scope: "panel"` every forecaster in every round and the report agent also read its first 8,000 characters, at about 2,000 more input tokens a call. `use_feeds` (default true) has the run research the question first (recent news with its links, from GDELT and Wikipedia’s Current events, and Wikipedia background) and read OSIRIS news, quakes and markets; panelists quote these sources by id. Keep `run_token`: it is not shown again. Two runs at once and eight per ten minutes per address.',
         bodyExample: `{
   "question": "Will Brent crude settle above $90 on 31 December 2026?",
   "depth": "standard",

@@ -6,9 +6,15 @@
  */
 import type { ContextItem } from './types';
 import { text } from './parse';
+import { hit, terms } from './words';
+
+export { terms };
 
 export interface RawNews {
   title?: string;
+  /** The story's own page. */
+  link?: string;
+  url?: string;
   summary?: string;
   description?: string;
   published?: string;
@@ -41,33 +47,10 @@ export interface Sources {
   quotes(): Promise<RawQuote[]>;
 }
 
-const STOP = new Set(`
-  the and for are but not you all any can had her was one our out has have his how its may new now old see two way who
-  did get let say she too use will would could should what when where which while with without within into onto from
-  this that these those than then them they their there here about above after again against before below between
-  both during each few more most other over same some such only own under until very just also been being does doing
-  done make made next last year years month months week weeks day days time end happen happens happening likely chance
-  probability predict prediction forecast question whether does dont isnt arent wont cant per via upon among across
-`.split(/\s+/).filter(Boolean));
-
-/** The words of a question worth matching headlines on. */
-export function terms(...texts: string[]): string[] {
-  const out = new Set<string>();
-  for (const t of texts) {
-    for (const raw of t.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').split(/[^\p{L}\p{N}]+/u)) {
-      if (raw.length < 3 || STOP.has(raw) || /^\d+$/.test(raw)) continue;
-      out.add(raw.length > 4 && raw.endsWith('s') && !raw.endsWith('ss') ? raw.slice(0, -1) : raw);
-      if (out.size >= 40) break;
-    }
-  }
-  return [...out];
-}
-
-function hit(hay: string, term: string): boolean {
-  const i = hay.indexOf(term);
-  if (i < 0) return false;
-  // A word start, so "ran" does not match "Iran" and "oil" does not match "turmoil".
-  return i === 0 || !/[\p{L}\p{N}]/u.test(hay[i - 1]);
+/** Whether a source shares at least one of the question's words: a headline about something else is no evidence. */
+export function onTopic(item: { title: string; excerpt?: string; place?: string }, words: string[]): boolean {
+  const hay = `${item.title} ${item.excerpt ?? ''} ${item.place ?? ''}`.toLowerCase();
+  return words.some(w => hit(hay, w));
 }
 
 export function scoreNews(item: RawNews, q: string[]): number {
@@ -83,19 +66,30 @@ export function scoreNews(item: RawNews, q: string[]): number {
   return score;
 }
 
+/** A link worth showing: http(s) only. */
+export function httpUrl(v: unknown): string | undefined {
+  return typeof v === 'string' && /^https?:\/\/[^\s]+$/i.test(v.trim()) ? v.trim() : undefined;
+}
+
 function newsItem(n: RawNews, id: string): ContextItem {
   const lat = n.place?.lat ?? n.coords?.[0] ?? null;
   const lng = n.place?.lng ?? n.coords?.[1] ?? null;
   const ok = typeof lat === 'number' && typeof lng === 'number' && Number.isFinite(lat) && Number.isFinite(lng);
+  const title = text(n.title, 220, 'Untitled');
+  // The summary, where it says more than the headline: what a panelist can quote besides it.
+  const summary = text(n.summary || n.description, 320, '');
+  const url = httpUrl(n.link ?? n.url);
   return {
     id,
     kind: 'news',
-    title: text(n.title, 220, 'Untitled'),
+    title,
     source: text(n.source_name || n.source, 60),
     published: typeof n.published === 'string' ? n.published : '',
     place: text(n.place?.label || n.place?.name || n.coords_anchor, 80),
     lat: ok ? lat : null,
     lng: ok ? lng : null,
+    ...(url ? { url } : {}),
+    ...(summary && !title.includes(summary.slice(0, 60)) ? { excerpt: summary } : {}),
   };
 }
 
@@ -118,12 +112,14 @@ export function selectContext(
   const relevant = scored.filter(x => x.s >= 3);
   const picked = relevant.slice(0, limit - 1).map(x => x.n);
 
-  // Too little on topic: add the biggest stories of the moment, so the panel still sees the world.
-  if (picked.length < 6) {
+  // Almost nothing on topic: add a few of the biggest stories of the moment, so the panel still sees
+  // the world. Only a few: the research brings the coverage of the question itself, and a headline
+  // that has nothing to do with it is no evidence for anything.
+  if (picked.length < 3) {
     const general = recent
       .filter(n => !picked.includes(n))
       .sort((a, b) => (b.risk_score || 0) - (a.risk_score || 0) || Date.parse(b.published || '') - Date.parse(a.published || ''))
-      .slice(0, Math.min(limit - 1, 8) - picked.length);
+      .slice(0, Math.min(limit - 1, 4) - picked.length);
     picked.push(...general);
   }
 
@@ -132,7 +128,8 @@ export function selectContext(
   const quakeAsked = QUAKE_WORDS.test(question) || QUAKE_WORDS.test(seed.slice(0, 2000));
   const quakes = data.quakes
     .filter(e => (e.magnitude || 0) >= 5 && Number.isFinite(e.lat) && Number.isFinite(e.lng))
-    .filter(e => quakeAsked || q.some(t => hit((e.place || '').toLowerCase(), t)))
+    // Only when the question is about quakes: one in a country the question names is not evidence about it.
+    .filter(() => quakeAsked)
     .sort((a, b) => (b.magnitude || 0) - (a.magnitude || 0))
     .slice(0, 3);
   for (const e of quakes) {

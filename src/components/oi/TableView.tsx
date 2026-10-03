@@ -15,6 +15,7 @@ import type { RunState } from '@/lib/oi/state';
 import { LABEL, SOLID, T, ago, pct, toneColor } from './theme';
 import { Empty, Segmented, TypeIcon, ViewTag, accentFor } from './atoms';
 import { Spark } from './lists';
+import { SOURCE_KIND } from './quotes';
 
 type Kind = 'panelists' | 'actors' | 'sources' | 'links';
 
@@ -87,7 +88,7 @@ function specs(s: RunState) {
     rows: s.context, key: c => `c:${c.id}`, text: c => `${c.title} ${c.source} ${c.place}`,
     columns: [
       { id: 'title', label: 'Source', width: 'minmax(220px,3fr)', sort: c => c.title, cell: c => <NameCell k={`c:${c.id}`} subtype={c.kind} title={c.title} sub={c.source} /> },
-      { id: 'kind', label: 'Kind', width: '72px', sort: c => c.kind, cell: c => <span className={`${LABEL} !text-[8.5px] text-[var(--text-secondary)]`}>{c.kind}</span> },
+      { id: 'kind', label: 'Kind', width: '84px', sort: c => c.kind, cell: c => <span className={`${LABEL} !text-[8.5px] text-[var(--text-secondary)]`}>{SOURCE_KIND[c.kind] ?? c.kind}</span> },
       { id: 'place', label: 'Location', width: 'minmax(80px,1fr)', sort: c => c.place, cell: c => <span className="truncate text-[var(--text-secondary)]">{c.place || '—'}</span> },
       { id: 'age', label: 'Age', width: '64px', align: 'right', sort: c => Date.parse(c.published) || 0, cell: c => num(ago(c.published) || '—') },
       { id: 'cited', label: 'Cited', width: '54px', align: 'right', sort: c => touching(`c:${c.id}`).length, cell: c => num(touching(`c:${c.id}`).length || '—') },

@@ -152,7 +152,7 @@ const EXAMPLES: { kind: Frame['kind']; text: string }[] = [
 ];
 
 /** The forecast's four stages, as the panel will show them working. */
-const STAGES = ['World model', 'Panel', 'Debate', 'Report'] as const;
+const STAGES = ['Research', 'World', 'Panel', 'Debate', 'Report'] as const;
 
 /* ───────────── Your data ───────────── */
 
@@ -305,7 +305,7 @@ export function AskForm({ ready, providerName, onRun, onKey }: { ready: boolean;
   };
   const d = DEPTHS[depth];
   // The stages that read the asker's data: the world model, and with the whole panel reading it, the debate and the report.
-  const reads = (i: number) => seed.length > 0 && (i === 0 || (scope === 'panel' && i >= 2));
+  const reads = (i: number) => seed.length > 0 && (i === 1 || (scope === 'panel' && i >= 3));
   return (
     <section className="px-4 pt-4 pb-4 flex flex-col gap-4">
       <div>
@@ -314,7 +314,7 @@ export function AskForm({ ready, providerName, onRun, onKey }: { ready: boolean;
         <p className="mt-1 text-[11px] leading-relaxed text-[var(--text-secondary)]">
           A simulated panel of forecasters debates your question in rounds, grounded in live OSIRIS intelligence and any data you add, while the analysis draws itself on the globe.
         </p>
-        <ol className="mt-2.5 grid grid-cols-[1.5fr_1fr_1fr_1fr] gap-1" aria-label="How a forecast runs">
+        <ol className="mt-2.5 grid grid-cols-[1.25fr_1fr_1fr_1fr_1fr] gap-1" aria-label="How a forecast runs">
           {STAGES.map((label, i) => (
             <li key={label} className="relative flex items-center gap-1.5 h-7 px-1.5 rounded-md border border-[var(--border-secondary)] bg-white/[0.015]" title={reads(i) ? `${label} · reads your data` : label}>
               <span className="w-4 h-4 rounded-full flex items-center justify-center text-[8.5px] font-mono flex-shrink-0" style={{ color: T.goldLight, background: gold(0.12) }}>{i + 1}</span>
@@ -370,17 +370,17 @@ export function AskForm({ ready, providerName, onRun, onKey }: { ready: boolean;
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between">
           <Overline>Depth</Overline>
-          <span className="text-[9px] font-mono tracking-[0.1em] text-[var(--text-muted)]">{d.agents} FORECASTERS · {d.rounds} ROUNDS · ~{estimateCalls(depth)} CALLS</span>
+          <span className="text-[9px] font-mono tracking-[0.1em] text-[var(--text-muted)]">{d.agents} FORECASTERS · {d.rounds} ROUNDS · ~{estimateCalls(depth, useFeeds)} CALLS</span>
         </div>
         <Segmented id="depth" value={depth} onChange={setDepth} options={(Object.keys(DEPTHS) as Depth[]).map(k => ({ value: k, label: DEPTHS[k].label }))} />
       </div>
 
       <div className="flex items-center gap-3 rounded-md border border-[var(--border-secondary)] bg-white/[0.015] px-3 py-2">
         <div className="flex-1 min-w-0">
-          <p className="text-[11px] text-[var(--text-primary)]">Live intelligence</p>
-          <p className="text-[10px] text-[var(--text-muted)] truncate">Ground the panel in OSIRIS news, quakes and markets</p>
+          <p className="text-[11px] text-[var(--text-primary)]">Research and live intelligence</p>
+          <p className="text-[10px] leading-snug text-[var(--text-muted)]">Search the news and background for the question, with links, plus OSIRIS news, quakes and markets</p>
         </div>
-        <Switch on={useFeeds} onChange={setUseFeeds} label="Ground it in the live OSIRIS feeds" />
+        <Switch on={useFeeds} onChange={setUseFeeds} label="Research the question and read the live OSIRIS feeds" />
       </div>
 
       {ready ? (

@@ -16,7 +16,7 @@ import type { ContextItem, Link, Post, RoundStat } from '@/lib/oi/types';
 import { FIELD, LABEL, T, ago, cyan, fit, gold, pct, smooth, toneColor } from './theme';
 import { Avatar, Empty, Mentions, SectionTitle, ViewTag } from './atoms';
 import { ReportBody } from './report';
-import { Quotes, sourceLabel } from './quotes';
+import { Quotes, SOURCE_KIND, SourceLink, sourceLabel } from './quotes';
 
 export type Tab = 'report' | 'debate' | 'panel' | 'world' | 'ask';
 
@@ -287,14 +287,17 @@ export function ContextList({ s, selected, onSelect }: { s: RunState; selected: 
         const n = quoted.get(c.id) ?? 0;
         const used = n > 0 || cited.has(c.id);
         return (
-          <Row key={c.id} on={selected === key} onClick={() => onSelect(selected === key ? null : key)}>
-            <span className="self-start mt-[6px] w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: used ? T.cyan : 'var(--text-muted)', boxShadow: used ? `0 0 6px ${cyan(0.8)}` : undefined }} />
-            <span className="min-w-0 flex-1">
-              <span className="block text-[11px] leading-snug text-[var(--text-primary)]">{c.kind === 'data' && c.id !== 'data' ? `“${c.title}”` : c.title}</span>
-              <span className="block mt-0.5 text-[9px] font-mono tracking-[0.08em] truncate text-[var(--text-muted)]">{[`[${c.id}]`, sourceLabel(c, c.id), c.place, ago(c.published)].filter(Boolean).join(' · ')}</span>
-            </span>
-            {n > 0 && <span className="self-start mt-px text-[9px] font-mono tabular-nums whitespace-nowrap" style={{ color: T.cyan }} title={`Quoted ${n} time${n === 1 ? '' : 's'}`}>{n}×</span>}
-          </Row>
+          <div key={c.id} className="flex items-start gap-1">
+            <Row on={selected === key} onClick={() => onSelect(selected === key ? null : key)}>
+              <span className="self-start mt-[6px] w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: used ? T.cyan : 'var(--text-muted)', boxShadow: used ? `0 0 6px ${cyan(0.8)}` : undefined }} />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[11px] leading-snug text-[var(--text-primary)]">{c.kind === 'data' && c.id !== 'data' ? `“${c.title}”` : c.title}</span>
+                <span className="block mt-0.5 text-[9px] font-mono tracking-[0.08em] truncate text-[var(--text-muted)]">{[`[${c.id}]`, SOURCE_KIND[c.kind], sourceLabel(c, c.id), ago(c.published)].filter(Boolean).join(' · ')}</span>
+              </span>
+              {n > 0 && <span className="self-start mt-px text-[9px] font-mono tabular-nums whitespace-nowrap" style={{ color: T.cyan }} title={`Quoted ${n} time${n === 1 ? '' : 's'}`}>{n}×</span>}
+            </Row>
+            <SourceLink url={c.url} className="mt-2 ml-1 flex-shrink-0" />
+          </div>
         );
       })}
     </div>

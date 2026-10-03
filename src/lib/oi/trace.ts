@@ -40,7 +40,7 @@ export function formatDuration(ms: number): string {
 
 export function traceOf(s: RunState): TraceStep[] {
   const planned: { id: string; phase: Phase; title: string }[] = [
-    { id: 'context', phase: 'context', title: 'Read live intelligence' },
+    { id: 'context', phase: 'context', title: 'Research the question' },
     { id: 'graph', phase: 'graph', title: 'Map the world' },
     { id: 'agents', phase: 'agents', title: 'Assemble the panel' },
     ...Array.from({ length: Math.max(1, s.roundsPlanned) }, (_, i) => ({ id: `round:${i + 1}`, phase: 'simulate' as Phase, title: `Debate · round ${i + 1}` })),
@@ -74,8 +74,8 @@ function metricsFor(s: RunState, id: string): TraceMetric[] {
   const count = <T,>(xs: T[], f: (x: T) => boolean) => xs.filter(f).length;
   switch (id) {
     case 'context': {
-      const kinds = (['news', 'quake', 'market', 'data'] as const).map(k => [k, count(s.context, c => c.kind === k)] as const).filter(([, n]) => n > 0);
-      const name = { news: 'News', quake: 'Quakes', market: 'Markets', data: 'Your data' } as const;
+      const kinds = (['web', 'wiki', 'news', 'quake', 'market', 'data'] as const).map(k => [k, count(s.context, c => c.kind === k)] as const).filter(([, n]) => n > 0);
+      const name = { web: 'Articles', wiki: 'Background', news: 'Live feed', quake: 'Quakes', market: 'Markets', data: 'Your data' } as const;
       return [{ label: 'Sources', value: String(s.context.length) }, ...kinds.map(([k, n]) => ({ label: name[k], value: String(n) }))];
     }
     case 'graph': {

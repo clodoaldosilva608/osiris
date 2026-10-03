@@ -1,16 +1,23 @@
 /** How big a run is. Kept apart from the engine so the browser can read it without the server code. */
 import type { Depth } from './types';
 
-export const DEPTHS: Record<Depth, { label: string; agents: number; rounds: number; feed: number }> = {
-  quick: { label: 'Quick', agents: 6, rounds: 2, feed: 14 },
-  standard: { label: 'Standard', agents: 10, rounds: 3, feed: 20 },
-  deep: { label: 'Deep', agents: 16, rounds: 4, feed: 28 },
+/**
+ * Panelists, rounds, items from the live OSIRIS feeds, and articles the
+ * research reads (news found for the question, besides its background).
+ */
+export const DEPTHS: Record<Depth, { label: string; agents: number; rounds: number; feed: number; research: number }> = {
+  quick: { label: 'Quick', agents: 6, rounds: 2, feed: 10, research: 6 },
+  standard: { label: 'Standard', agents: 10, rounds: 3, feed: 12, research: 8 },
+  deep: { label: 'Deep', agents: 16, rounds: 4, feed: 16, research: 10 },
 };
 
-/** Model calls a run makes, before any retries: world, panel, every turn, report. */
-export function estimateCalls(depth: Depth): number {
+/**
+ * Model calls a run makes, before any retries: the research plan (when it
+ * researches), the world, the panel, every turn, the report.
+ */
+export function estimateCalls(depth: Depth, research = true): number {
   const d = DEPTHS[depth];
-  return 3 + d.agents * d.rounds;
+  return (research ? 4 : 3) + d.agents * d.rounds;
 }
 
 /** The most of the caller's own data a run reads: about 25,000 tokens, read once by the world model. */

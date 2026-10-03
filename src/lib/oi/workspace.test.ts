@@ -44,7 +44,7 @@ describe('the execution trace', () => {
     expect(steps.map(st => st.status)).toEqual(['done', 'done', 'done', 'active', 'pending', 'pending']);
     expect(steps[0].end! - steps[0].start!).toBe(2000);
     expect(steps[3].end).toBeNull();
-    expect(steps[0].metrics).toEqual([{ label: 'Sources', value: '2' }, { label: 'News', value: '1' }, { label: 'Quakes', value: '1' }]);
+    expect(steps[0].metrics).toEqual([{ label: 'Sources', value: '2' }, { label: 'Live feed', value: '1' }, { label: 'Quakes', value: '1' }]);
     expect(steps[1].metrics).toContainEqual({ label: 'Base rate', value: '30%' });
     expect(steps[3].metrics).toEqual([
       { label: 'Turns', value: '2 / 2' }, { label: 'Replies', value: '1' },
@@ -92,6 +92,8 @@ describe('the run as objects', () => {
     expect(mentions('Lucía Ferreyra disagrees.', s)[0]).toEqual({ key: 'g:lucia', text: 'Lucía Ferreyra' });
     expect(mentions('nothing here', s)).toEqual(['nothing here']);
     expect(mentions('', s)).toEqual([]);
+    // Sources by id, as panelists cite them, but not inside other words.
+    expect(mentions('c1 moves me; ac1 does not.', s)).toEqual([{ key: 'c:c1', text: 'c1' }, ' moves me; ac1 does not.']);
   });
 });
 

@@ -6,6 +6,13 @@ import { ProviderError, type ChatFn } from './providers';
 import { applyEvent, initialState, type RunState } from './state';
 import type { Agent, ContextItem, OiEvent, Post } from './types';
 
+/** What the research finds: articles with their links and what they say, and background. */
+const WEB: ContextItem[] = [
+  { id: 'w1', kind: 'web', title: 'Envoys close in on framework text', source: 'Wire Daily', published: '2026-10-01T08:00:00Z', place: 'Switzerland', lat: null, lng: null, url: 'https://wire.example/envoys', excerpt: 'Negotiators said seven of nine chapters of the framework are agreed, with verification still open.' },
+  { id: 'w2', kind: 'web', title: 'Sanctions row threatens talks', source: 'Policy Post', published: '2026-09-30T08:00:00Z', place: '', lat: null, lng: null, url: 'https://policy.example/row', excerpt: 'A new sanctions package has angered one delegation, which threatened to walk out of the Geneva round.' },
+  { id: 'b1', kind: 'wiki', title: 'Framework agreement', source: 'Wikipedia', published: '', place: '', lat: null, lng: null, url: 'https://en.wikipedia.org/wiki/Framework_agreement', excerpt: 'A framework agreement sets out the terms under which later agreements are made.' },
+];
+
 const CONTEXT: ContextItem[] = [
   { id: 'c1', kind: 'news', title: 'Envoys due in Geneva', source: 'Wire', published: '2026-10-02T09:00:00Z', place: 'Geneva', lat: 46.2, lng: 6.14 },
   { id: 'c2', kind: 'news', title: 'New export controls floated', source: 'Wire', published: '2026-10-02T08:00:00Z', place: 'Washington', lat: 38.9, lng: -77 },
@@ -22,6 +29,7 @@ function harness(chat: ChatFn, injects: string[][] = []) {
     signal: new AbortController().signal,
     takeInjects: () => injects.shift() ?? [],
     gather: async () => CONTEXT,
+    research: async () => WEB,
     today: '2026-10-02',
   };
   return { events, prompts, deps };
@@ -40,7 +48,16 @@ describe('runEngine', () => {
 
     const s = fold(h.events);
     const d = DEPTHS.quick;
-    expect(s.context).toHaveLength(2);
+    // The research comes first: articles and background with their links, then the live feeds.
+    expect(s.context.map(c => c.id)).toEqual(['w1', 'w2', 'b1', 'c1', 'c2']);
+    expect(h.prompts[0]).toContain('Plan the research');
+    // The panel is anonymous: Agent 1, Agent 2…, each known by a role.
+    expect(s.agents.map(a => a.name)).toEqual(Array.from({ length: DEPTHS.quick.agents }, (_, i) => `Agent ${i + 1}`));
+    expect(s.agents.every(a => a.id === `agent_${a.name.slice(6)}` && a.role.length > 3)).toBe(true);
+    // Every quote is attributed: which way it pushed the panelist, and why; the research is quoted before the headlines.
+    const cites = s.posts.flatMap(p => p.cites ?? []);
+    expect(cites.every(c => c.push && c.why)).toBe(true);
+    expect(cites.every(c => /^[wb]/.test(c.source))).toBe(true);
     expect(s.frame?.proposition).toContain('envoys');
     expect(s.actors.length).toBeGreaterThan(5);
     expect(s.agents).toHaveLength(d.agents);
@@ -87,8 +104,12 @@ describe('runEngine', () => {
   it('feeds live context into the world model and the panel', async () => {
     const h = harness(createDemoChat());
     await runEngine({ question: 'Will the envoys sign a deal?', seed: 'Leaked draft text.', depth: 'quick', useFeeds: true }, h.deps);
-    expect(h.prompts[0]).toContain('[c1]');
-    expect(h.prompts[0]).toContain('Leaked draft text.');
+    const world = h.prompts.find(p => p.includes('Build the world model'))!;
+    expect(world).toContain('[c1]');
+    expect(world).toContain('[w1]');
+    // An article's excerpt goes in with it, so the panel can quote what it says.
+    expect(world).toContain('seven of nine chapters of the framework are agreed');
+    expect(world).toContain('Leaked draft text.');
     expect(h.prompts.find(p => p.includes('This is round'))).toContain('Envoys due in Geneva');
   });
 
@@ -146,7 +167,18 @@ describe('runEngine', () => {
     const h = harness(createDemoChat());
     await runEngine({ question: 'Will the envoys sign a deal?', seed: '', depth: 'quick', useFeeds: false }, h.deps);
     expect(h.prompts.filter(p => p.includes('This is round')).every(p => !p.includes('"cites"'))).toBe(true);
-    expect(fold(h.events).usage.calls).toBe(estimateCalls('quick'));
+    // Without the live feeds there is no research either, so no research plan.
+    expect(fold(h.events).usage.calls).toBe(estimateCalls('quick', false));
+  });
+
+  it('leaves out the feed headlines about something else once the research has found coverage', async () => {
+    const h = harness(createDemoChat());
+    const covered = [...WEB, { ...WEB[0], id: 'w3', title: 'Envoys to sign within weeks, hosts say', url: 'https://wire.example/sign' }];
+    h.deps.research = async () => covered.map(c => ({ ...c, kind: c.id.startsWith('b') ? 'wiki' as const : 'web' as const }));
+    await runEngine({ question: 'Will the envoys sign a deal?', seed: '', depth: 'quick', useFeeds: true }, h.deps);
+    const ids = fold(h.events).context.map(c => `${c.id}:${c.title}`);
+    // "Envoys due in Geneva" names the envoys; "New export controls floated" does not, and goes.
+    expect(ids.filter(x => x.startsWith('c'))).toEqual(['c1:Envoys due in Geneva']);
   });
 
   it('puts an injected event in front of the panel from the next round on, and in the report', async () => {

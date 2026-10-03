@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { DATA_ID, dataExcerpts, parseCites, quoteIn, sourceIds, sourceTexts, wholeData } from './sources';
+import { DATA_ID, dataExcerpts, evidenceLedger, parseCites, quoteIn, sourceIds, sourceTexts, wholeData } from './sources';
 import type { ContextItem } from './types';
 
 const NEWS: ContextItem = { id: 'c1', kind: 'news', title: 'Envoys due in Geneva for “final round” of talks', source: 'Wire', published: '', place: 'Geneva', lat: 46.2, lng: 6.14 };
@@ -51,14 +51,38 @@ describe('parseCites', () => {
       { source: 'd1', quote: '' },
     ], texts);
     expect(cites).toEqual([
-      { source: 'c1', quote: 'Envoys due in Geneva', exact: true },
-      { source: 'd1', quote: 'seven of nine delegations are ready', exact: false },
+      { source: 'c1', quote: 'Envoys due in Geneva', exact: true, push: 'neutral' },
+      { source: 'd1', quote: 'seven of nine delegations are ready', exact: false, push: 'neutral' },
     ]);
+  });
+
+  it('says which way each quote pushed the forecast, for which outcome, and why', () => {
+    const cites = parseCites([
+      { source: 'c1', quote: 'Envoys due in Geneva', effect: 'down', why: 'Talks keep slipping.' },
+      { source: 'd1', quote: '7 of 9 delegations ready', effect: 'YES', favors: 'deal signed', why: '' },
+    ], texts, 3, ['Deal signed', 'No deal']);
+    expect(cites.map(c => [c.push, c.favors, c.why])).toEqual([['no', undefined, 'Talks keep slipping.'], ['yes', 'Deal signed', undefined]]);
   });
 
   it('checks a news quote against the outlet too, and caps the list', () => {
     expect(parseCites([{ source: 'c1', quote: 'talks Wire' }], texts)[0].exact).toBe(true);
     expect(parseCites('not a list', texts)).toEqual([]);
     expect(sourceIds(['c1', 'C1', 'zz', 'd1'], new Set(texts.keys()))).toEqual(['c1', 'd1']);
+  });
+});
+
+describe('evidenceLedger', () => {
+  it('counts the quotes of each source, who made them and which way they pushed, most quoted first', () => {
+    const rows = evidenceLedger([
+      { agent: 'agent_1', cites: [{ source: 'w1', quote: 'q', exact: true, push: 'yes' }, { source: 'w2', quote: 'q', exact: false, push: 'no' }] },
+      { agent: 'agent_2', cites: [{ source: 'w1', quote: 'q', exact: true, push: 'yes' }] },
+      { agent: 'agent_1', cites: [{ source: 'w1', quote: 'q', exact: false, push: 'neutral', favors: 'Hold' }] },
+      { agent: 'agent_3' },
+    ]);
+    expect(rows.map(r => [r.source, r.quoted, r.agents, r.yes, r.no, r.neutral, r.exact])).toEqual([
+      ['w1', 3, ['agent_1', 'agent_2'], 2, 0, 1, 2],
+      ['w2', 1, ['agent_1'], 0, 1, 0, 0],
+    ]);
+    expect(rows[0].favors).toEqual({ Hold: 1 });
   });
 });

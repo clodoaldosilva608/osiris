@@ -11,12 +11,16 @@ import { directionWord } from '@/lib/oi/forecast';
 import type { RunState } from '@/lib/oi/state';
 import { T, leanTo, pct } from './theme';
 import { Mentions, Overline, SectionTitle, TextButton, TypeIcon } from './atoms';
-import { sourceLabel } from './quotes';
+import { PushTag, SourceLink, sourceLabel } from './quotes';
+import { evidenceLedger } from '@/lib/oi/sources';
 
 export function ReportBody({ s, runId, selected, onSelect }: { s: RunState; runId: string | null; selected: string | null; onSelect: (k: string | null) => void }) {
   const r = s.report!;
   const frame = s.frame;
   const [copied, setCopied] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  // The evidence behind the panel's number, source by source.
+  const ledger = evidenceLedger(s.posts);
   const url = typeof window !== 'undefined' && runId ? `${window.location.origin}/?oi=${runId}` : '';
   const copy = async () => {
     try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* clipboard blocked */ }
@@ -86,6 +90,44 @@ export function ReportBody({ s, runId, selected, onSelect }: { s: RunState; runI
               );
             })}
           </div>
+        </div>
+      )}
+
+      {ledger.length > 0 && (
+        <div>
+          <SectionTitle count={ledger.length}>Evidence · what carried the panel</SectionTitle>
+          <div className="flex flex-col divide-y divide-[var(--border-secondary)]">
+            {ledger.slice(0, showAll ? undefined : 6).map(row => {
+              const c = s.context.find(x => x.id === row.source);
+              const key = `c:${row.source}`;
+              const on = selected === key;
+              // The way it pushed most panelists; context when it pushed none.
+              const lead = row.yes >= row.no && row.yes > 0 ? 'yes' : row.no > 0 ? 'no' : 'neutral';
+              const favors = Object.entries(row.favors).sort((a, b) => b[1] - a[1])[0]?.[0];
+              return (
+                <div key={row.source} className="flex items-start gap-2 py-2">
+                  <button onClick={() => onSelect(on ? null : key)} className="group flex-1 min-w-0 text-left">
+                    <span className={`block text-[11.5px] leading-snug line-clamp-2 transition-colors group-hover:text-[var(--text-primary)] ${on ? 'text-[var(--text-heading)]' : 'text-[var(--text-secondary)]'}`}>{c?.kind === 'data' && c.id !== 'data' ? `“${c.title}”` : c?.title ?? row.source}</span>
+                    <span className="mt-1 flex items-center gap-2 text-[9px] font-mono tracking-[0.06em] text-[var(--text-muted)]">
+                      <TypeIcon k={key} subtype={c?.kind} className="w-2.5 h-2.5 flex-shrink-0" />
+                      <span className="truncate">{sourceLabel(c, row.source)}</span>
+                      <span className="opacity-70">[{row.source}]</span>
+                      <span className="flex-shrink-0">· {row.quoted}× by {row.agents.length}</span>
+                    </span>
+                  </button>
+                  <span className="mt-0.5 flex items-center gap-1.5 flex-shrink-0">
+                    <PushTag c={{ push: lead, favors }} frame={frame} />
+                    <SourceLink url={c?.url} />
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          {ledger.length > 6 && (
+            <button onClick={() => setShowAll(v => !v)} className="mt-1 text-[9.5px] font-mono tracking-[0.12em] uppercase text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+              {showAll ? 'Show fewer' : `Show all ${ledger.length}`}
+            </button>
+          )}
         </div>
       )}
 

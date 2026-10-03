@@ -837,9 +837,8 @@ export function attachOi(map: MlMap, options: OiGlobeOptions = {}): OiGlobe {
       if (g.lat === null || g.lng === null) continue;
       const key = `g:${g.id}`;
       const post = latest.get(g.id);
-      const first = g.name.split(' ')[0];
       features.push(point(g.lng, g.lat, {
-        key, kind: 'agent', label: first, color: agentTint(s, post, range),
+        key, kind: 'agent', label: g.name, color: agentTint(s, post, range),
         radius: key === selected ? 5.5 : 3.6, halo: s.thinking[g.id] ? 14 : 9, sel: key === selected ? 1 : 0, dim: dimNode(key),
       }));
     }

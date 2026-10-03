@@ -60,17 +60,24 @@ export interface Frame {
 }
 
 /**
- * A source the run was given: a piece of the live world (a headline, a quake,
- * the markets), or a passage of the asker's own data (`data`: ids d1, d2…,
- * or `data` for the whole of it when the panel reads it all).
+ * A source the run was given, by id:
+ *   c…  the live OSIRIS feeds: a headline (`news`), a quake, the markets
+ *   w…  the research: a news article found for the question (`web`)
+ *   b…  background from Wikipedia (`wiki`)
+ *   d…  a passage of the asker's own data, or `data` for all of it (`data`)
  */
 export interface ContextItem extends Located {
   id: string;
-  kind: 'news' | 'quake' | 'market' | 'data';
+  kind: 'news' | 'quake' | 'market' | 'data' | 'web' | 'wiki';
   title: string;
+  /** The outlet, site or file it came from. */
   source: string;
   /** ISO time, or '' */
   published: string;
+  /** Where it was published, to open and check. Only http(s). */
+  url?: string;
+  /** What it says that bears on the question, as the panel read it. */
+  excerpt?: string;
 }
 
 export type ActorKind = 'state' | 'leader' | 'organisation' | 'company' | 'market' | 'group' | 'place';
@@ -125,13 +132,19 @@ export interface Reply {
   point: string;
 }
 
-/** Words a panelist quoted, and the source they came from. */
+/** Words a panelist quoted, the source they came from, and what they did to the panelist's forecast. */
 export interface Citation {
-  /** The source's id: a feed item (c3), a passage of the asker's data (d2), or `data`. */
+  /** The source's id: an article (w2), background (b1), a feed item (c3), a passage of the asker's data (d2), or `data`. */
   source: string;
   quote: string;
   /** The words were found in the source as quoted. */
   exact: boolean;
+  /** Which way it moved the panelist: toward YES (or higher), toward NO (or lower), or context only. */
+  push?: 'yes' | 'no' | 'neutral';
+  /** choice: the outcome it helps. */
+  favors?: string;
+  /** How it bears on their figure, in their words. */
+  why?: string;
 }
 
 /** One agent's turn in one round. */

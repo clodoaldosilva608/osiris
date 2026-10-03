@@ -20,7 +20,8 @@ import type { Link, Post } from '@/lib/oi/types';
 import { LABEL, T, ago, gold, leanTo, pct, tint, toneColor } from './theme';
 import { Avatar, IconButton, Mentions, Overline, TypeIcon, ViewTag, accentFor } from './atoms';
 import { LineGlyph } from './lists';
-import { Quotes, Verbatim, sourceLabel } from './quotes';
+import { PushTag, Quotes, SOURCE_KIND, SourceLink, Verbatim, sourceLabel } from './quotes';
+import { evidenceLedger } from '@/lib/oi/sources';
 
 export interface ObjectViewProps {
   s: RunState;
@@ -280,7 +281,7 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
     case 'agent': {
       const a = sel.agent;
       type = TYPE_LABEL.panelist;
-      subtype = 'simulated forecaster';
+      subtype = a.role;
       title = a.name;
       inGraph = true;
       if (a.lat !== null && a.lng !== null) locate = { lat: a.lat, lng: a.lng, zoom: 3.5 };
@@ -288,10 +289,12 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
       const last = posts[posts.length - 1];
       const first = posts[0];
       const replies = s.links.filter(l => l.kind === 'reply' && (l.from === sel.key || l.to === sel.key));
+      // What moved them: every source they quoted, and which way.
+      const moved = evidenceLedger(posts);
       const weighing = s.links.filter(l => l.kind === 'focus' && l.from === sel.key);
       props = [
         ['Role', a.role],
-        ['Location', a.place],
+        ['Based in', a.place],
         ['Lens', a.lens],
         ['Watches for', a.bias],
         ['Prior', s.frame?.kind === 'binary' ? <span key="p" className="font-mono">{pct(a.prior)}</span> : null],
@@ -306,10 +309,31 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
               <div className="flex flex-col gap-2">{posts.slice().reverse().map(p => <PostCard key={p.id} s={s} onSelect={onSelect} post={p} />)}</div>
             </Group>
           )}
+          {moved.length > 0 && (
+            <Group label="What moved them" count={moved.length}>
+              <div className="flex flex-col">
+                {moved.map(r => {
+                  const c = s.context.find(x => x.id === r.source);
+                  const last = posts.flatMap(p => p.cites ?? []).filter(x => x.source === r.source).at(-1);
+                  return (
+                    <div key={r.source} className="flex items-center gap-2 -mx-1.5 px-1.5 py-1 rounded hover:bg-[var(--hover-accent)]">
+                      <button onClick={() => onSelect(`c:${r.source}`)} className="flex-1 min-w-0 flex items-center gap-2 text-left">
+                        <TypeIcon k={`c:${r.source}`} subtype={c?.kind} className="w-3 h-3 flex-shrink-0 text-[var(--text-muted)]" />
+                        <span className="text-[11px] truncate text-[var(--text-secondary)]">{c?.title ?? r.source}</span>
+                      </button>
+                      {last && <PushTag c={last} frame={s.frame} />}
+                      <span className="text-[9px] font-mono tabular-nums text-[var(--text-muted)]">{r.quoted}×</span>
+                      <SourceLink url={c?.url} />
+                    </div>
+                  );
+                })}
+              </div>
+            </Group>
+          )}
           {replies.length > 0 && <Group label="Exchanges" count={replies.length}><LinkRows s={s} links={replies} from={sel.key} onSelect={onSelect} /></Group>}
           {weighing.length > 0 && <Group label="Weighing" count={weighing.length}><LinkRows s={s} links={weighing} from={sel.key} onSelect={onSelect} /></Group>}
           <button onClick={() => onAsk(a.id)} className="btn-tactical btn-tactical--cyan self-start flex items-center gap-2" style={{ padding: '6px 12px', fontSize: 10 }}>
-            <MessageSquare className="w-3 h-3" /> Ask {a.name.split(' ')[0]}
+            <MessageSquare className="w-3 h-3" /> Ask {/^Agent \d+$/.test(a.name) ? a.name : a.name.split(' ')[0]}
           </button>
         </>
       );
@@ -318,7 +342,7 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
     case 'context': {
       const c = sel.item;
       type = TYPE_LABEL.source;
-      subtype = c.kind === 'quake' ? 'earthquake' : c.kind === 'market' ? 'markets' : c.kind === 'data' ? 'your data' : 'news';
+      subtype = SOURCE_KIND[c.kind] ?? c.kind;
       iconSub = c.kind;
       title = c.kind === 'data' && c.id !== 'data' ? `“${c.title}”` : c.title;
       if (c.lat !== null && c.lng !== null) locate = { lat: c.lat, lng: c.lng, zoom: 4 };
@@ -328,13 +352,24 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
       inGraph = bears.length + quotedBy.length + inReport.length > 0;
       props = [
         ['Id', <span key="i" className="font-mono">[{c.id}]</span>],
-        [c.kind === 'data' ? 'From' : 'Source', sourceLabel(c, c.id)],
+        [c.kind === 'data' ? 'From' : 'Source', <span key="s" className="inline-flex items-center gap-1.5">{sourceLabel(c, c.id)}<SourceLink url={c.url} /></span>],
         ['Location', c.place],
         ['Published', c.published ? `${new Date(c.published).toLocaleString()} · ${ago(c.published)}` : ''],
         ['Quoted', quotedBy.length ? <span key="q" className="font-mono tabular-nums">{quotedBy.length}× by {new Set(quotedBy.map(l => l.from)).size} panelist{new Set(quotedBy.map(l => l.from)).size === 1 ? '' : 's'}</span> : null],
       ];
       body = (
         <>
+          {c.excerpt && (
+            <Group label="What it says">
+              <blockquote className="pl-2.5 border-l-2 border-[var(--border-primary)] text-[11.5px] leading-relaxed text-[var(--text-secondary)]">{c.excerpt}</blockquote>
+            </Group>
+          )}
+          {c.url && (
+            <a href={c.url} target="_blank" rel="noopener noreferrer nofollow"
+              className="self-start inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-[var(--border-primary)] text-[10px] font-mono tracking-[0.12em] uppercase text-[var(--text-secondary)] hover:text-[var(--cyan-primary)] hover:border-[var(--border-active)] transition-colors">
+              Open the {c.kind === 'wiki' ? 'article on Wikipedia' : c.kind === 'web' ? 'article' : 'source'} ↗
+            </a>
+          )}
           {inReport.length > 0 && (
             <Group label="The report rests on it" count={inReport.length}>
               <div className="flex flex-col gap-1">

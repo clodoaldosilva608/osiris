@@ -23,6 +23,9 @@ export interface OiObject {
   subtitle: string;
 }
 
+/** A panelist in one line: "Agent 3 (Energy desk trader)". */
+export const agentLabel = (a: { name: string; role: string }) => (a.role ? `${a.name} (${a.role})` : a.name);
+
 export const TYPE_LABEL: Record<ObjectType, string> = {
   actor: 'Actor', panelist: 'Panelist', source: 'Source', report: 'Report', scenario: 'Scenario', signpost: 'Signpost',
 };
@@ -35,7 +38,7 @@ export const LINK_LABEL: Record<LinkKind, string> = {
 export function objectsOf(s: RunState): OiObject[] {
   return [
     ...s.actors.map(a => ({ key: `a:${a.id}`, type: 'actor' as const, subtype: a.kind, title: a.name, subtitle: a.role })),
-    ...s.agents.map(a => ({ key: `g:${a.id}`, type: 'panelist' as const, subtype: 'panelist', title: a.name, subtitle: [a.role, a.place].filter(Boolean).join(' · ') })),
+    ...s.agents.map(a => ({ key: `g:${a.id}`, type: 'panelist' as const, subtype: 'panelist', title: agentLabel(a), subtitle: [a.role, a.place].filter(Boolean).join(' · ') })),
     ...s.context.map(c => ({ key: `c:${c.id}`, type: 'source' as const, subtype: c.kind, title: c.title, subtitle: [c.source, c.place].filter(Boolean).join(' · ') })),
     ...(s.report ? [{ key: 'r:report', type: 'report' as const, subtype: 'report', title: s.report.headline, subtitle: s.report.answer }] : []),
     ...(s.report?.scenarios ?? []).map((sc, i) => ({ key: `s:${i}`, type: 'scenario' as const, subtype: 'scenario', title: sc.name, subtitle: `${Math.round(sc.probability * 100)}% · ${sc.description}` })),
@@ -77,7 +80,11 @@ export function mentions(text: string, s: RunState): Mention[] {
   const names = [
     ...s.actors.map(a => ({ key: `a:${a.id}`, name: a.name })),
     ...s.agents.map(a => ({ key: `g:${a.id}`, name: a.name })),
-  ].filter(n => n.name.trim().length >= 3).sort((a, b) => b.name.length - a.name.length);
+    // Panelists address each other by id too: "agent_3".
+    ...s.agents.map(a => ({ key: `g:${a.id}`, name: a.id })),
+    // And name their sources by id: "w2 still keeps me up".
+    ...s.context.filter(c => /^[cwbd]\d+$/.test(c.id)).map(c => ({ key: `c:${c.id}`, name: c.id })),
+  ].filter(n => n.name.trim().length >= 3 || n.key.startsWith('c:')).sort((a, b) => b.name.length - a.name.length);
   if (!text || !names.length) return text ? [text] : [];
   const escape = (n: string) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const re = new RegExp(`(?<![\\p{L}\\p{N}])(${names.map(n => escape(n.name)).join('|')})(?![\\p{L}\\p{N}])`, 'giu');

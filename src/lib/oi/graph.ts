@@ -15,6 +15,7 @@
  * came from before the forces untangle it. Everything here is pure and
  * client-safe; the workspace's GraphView draws it.
  */
+import { agentLabel } from './objects';
 import type { RunState } from './state';
 import type { LinkKind, Tone } from './types';
 
@@ -74,7 +75,7 @@ export function buildGraph(s: RunState, filter: GraphFilter = {}): Graph {
     nodes.set(key, { key, kind, subtype, label, degree: 0, radius: 0, lat, lng });
   };
   for (const a of s.actors) add(`a:${a.id}`, 'actor', a.kind, a.name, a.lat, a.lng);
-  for (const a of s.agents) add(`g:${a.id}`, 'agent', 'panelist', a.name, a.lat, a.lng);
+  for (const a of s.agents) add(`g:${a.id}`, 'agent', 'panelist', agentLabel(a), a.lat, a.lng);
   const cited = new Set(s.links.filter(l => l.from.startsWith('c:') || l.to.startsWith('c:')).flatMap(l => [l.from, l.to]));
   for (const c of s.context) if (cited.has(`c:${c.id}`)) add(`c:${c.id}`, 'evidence', c.kind, c.title, c.lat, c.lng);
   if (s.report && s.links.some(l => l.from === REPORT_KEY)) add(REPORT_KEY, 'report', 'report', 'Report', null, null);
