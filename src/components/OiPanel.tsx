@@ -2,11 +2,11 @@
 /**
  * OSIRIS OI: the panel.
  *
- * Two ways to use OI, on the reader's own model key. Forecast (the default)
- * is the swarm: set up an engine, ask, follow the run, read the report and
- * question the panel. Assist is a conversation: talk to OI and it works the
- * map for you (flies there, switches layers, finds what is live, marks it,
- * puts it on screen, starts forecasts, drives the workspace).
+ * Two ways to use OI, on the reader's own model key. Assist (the default)
+ * is a conversation: talk to OI and it works the map for you (flies there,
+ * switches layers, finds what is live, marks it, puts it on screen, starts
+ * forecasts, drives the workspace). Forecast is the swarm: set up an engine,
+ * ask, follow the run, read the report and question the panel.
  *
  * Full screen, with or without a run, it opens the OI workspace
  * (oi/Workspace): the same Forecast / Assist column on the left, the globe,

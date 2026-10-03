@@ -48,6 +48,7 @@ import { useAssist } from '@/lib/oi/assist/client';
 import type { Highlight, Site } from '@/lib/oi/assist/tools';
 import { currentAnswer } from '@/lib/oi/state';
 import type { OiMode } from '@/components/OiPanel';
+import { OiMark } from '@/components/oi/atoms';
 import type { Stage } from '@/components/oi/Workspace';
 import { searchObjects, TYPE_LABEL, objectsOf } from '@/lib/oi/objects';
 import { workspaceInsets } from '@/lib/oi/layout';
@@ -345,8 +346,8 @@ export default function Dashboard() {
   const [oiHover, setOiHover] = useState<OiHover | null>(null);
   const [oiFollowing, setOiFollowing] = useState(true);
   const [oiTheater, setOiTheater] = useState(false);
-  /** Forecast (the swarm, the default) or Assist (talk to OI). */
-  const [oiMode, setOiMode] = useState<OiMode>('forecast');
+  /** Assist (talk to OI, the default) or Forecast (the swarm). */
+  const [oiMode, setOiMode] = useState<OiMode>('assist');
   /** What the full-screen workspace's stage shows. */
   const [oiStage, setOiStage] = useState<Stage>('globe');
   /** Whether the panel was opened from the keyboard, to type straight away. */
@@ -737,13 +738,10 @@ export default function Dashboard() {
   // and put back exactly what was on when focus ends.
   const [oiFocus, setOiFocus] = useState(false);
   const focusSaved = useRef<typeof activeLayers | null>(null);
-  /** Whether focus is on, readable at once (the state lags a render behind). */
-  const focusOn = useRef(false);
   const toggleOiFocus = useCallback(() => {
     const saved = focusSaved.current;
     if (saved) {
       focusSaved.current = null;
-      focusOn.current = false;
       setActiveLayers(saved);
       setOiFocus(false);
       return;
@@ -753,21 +751,8 @@ export default function Dashboard() {
       focusSaved.current = prev;
       return Object.fromEntries(Object.entries(prev).map(([k, v]) => [k, KEEP.has(k) ? v : false])) as typeof prev;
     });
-    focusOn.current = true;
     setOiFocus(true);
   }, []);
-  // The theatre clears the globe for the research, and gives the layers back when it closes;
-  // focus someone switched on themselves stays their choice.
-  const theaterFocused = useRef(false);
-  useEffect(() => {
-    if (oiTheaterOn && !focusOn.current) {
-      theaterFocused.current = true;
-      toggleOiFocus();
-    } else if (!oiTheaterOn && theaterFocused.current) {
-      theaterFocused.current = false;
-      if (focusOn.current) toggleOiFocus();
-    }
-  }, [oiTheaterOn, toggleOiFocus]);
 
   // Global Stats Fetch
   useEffect(() => {
@@ -1765,32 +1750,7 @@ export default function Dashboard() {
 
 
       {/* ── RIGHT TOOL STRIP (desktop only — mobile uses bottom nav) ── */}
-      {!isMobile && <motion.div data-hud initial={{ opacity: 0, x: 12 }} animate={revealed ? { opacity: 1, x: 0 } : { opacity: 0, x: 12 }} transition={hudIn(0.3)} className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-[250] pointer-events-auto bg-black/40 backdrop-blur-sm p-1 rounded-full border border-white/5">
-        <div ref={oiAnchor} className="relative group">
-          <button onClick={() => { setShowOi(!showOi); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowSpaceCam(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showOi ? 'bg-[var(--gold-primary)]/20' : 'hover:bg-white/10'}`} title="OI — ask anything and it works the map for you, or run a forecast, on your own AI key (O)" aria-label="OI" aria-expanded={showOi}>
-            <Orbit className={`w-4 h-4 ${showOi ? 'text-[var(--gold-primary)]' : 'text-white/60'}`} />
-            {showOi && (
-              <span
-                aria-hidden="true"
-                className="absolute -right-1 top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-full bg-current text-[var(--gold-primary)]"
-              />
-            )}
-            {oi.state?.status === 'running' && <span aria-hidden="true" className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-[var(--alert-green)] animate-pulse" />}
-          </button>
-          <span className="absolute right-11 top-1/2 -translate-y-1/2 px-2 py-1 text-[9px] font-mono tracking-wider text-white/80 bg-black/80 backdrop-blur-sm rounded whitespace-nowrap opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none">OI</span>
-          <AnimatePresence>
-            {showOi && (
-              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-12 w-[412px]" style={{ top: oiTop }}>
-                <OiPanel oi={oi} selected={oiSelected} onSelect={setOiSelected} onClose={() => { setShowOi(false); setOiTheater(false); setOiAutoFocus(false); }}
-                  focus={oiFocus} onFocus={toggleOiFocus} onLocate={handleOiLocate}
-                  theater={oiTheater} onTheater={setOiTheater} following={oiFollowing} onFollow={followOi}
-                  assist={assist} mode={oiMode} onMode={setOiMode} speakOn={oiVoice} onSpeak={setOiVoicePersist} autoFocus={oiAutoFocus}
-                  stage={oiStage} onStage={setOiStage} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
+      {!isMobile && <motion.div data-hud initial={{ opacity: 0, x: 12 }} animate={revealed ? { opacity: 1, x: 0 } : { opacity: 0, x: 12 }} transition={hudIn(0.3)} className="absolute right-2 top-1/2 -translate-y-1/2 flex flex-col items-center gap-2 z-[250] pointer-events-auto bg-black/40 backdrop-blur-sm p-1 rounded-full border border-white/5">
         <div className="relative group">
           <button onClick={() => { setShowIntel(!showIntel); setShowOi(false); setShowMarkets(false); setShowAlerts(false); }} className={`relative w-8 h-8 rounded-full flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showIntel ? 'bg-[var(--cyan-primary)]/20' : 'hover:bg-white/10'}`} title="OSINT Recon — IP lookup, network sweep, geolocation" aria-label="OSINT Recon" aria-expanded={showIntel}>
             <Radar className={`w-4 h-4 ${showIntel ? 'text-[var(--cyan-primary)]' : 'text-white/60'}`} />
@@ -1888,6 +1848,35 @@ export default function Dashboard() {
             )}
           </button>
           <span className="absolute right-11 top-1/2 -translate-y-1/2 px-2 py-1 text-[9px] font-mono tracking-wider text-white/80 bg-black/80 backdrop-blur-sm rounded whitespace-nowrap opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none">DRAW</span>
+        </div>
+
+        <div ref={oiAnchor} className="relative group">
+          {/* OI, the strip's main tool: bigger than the rest, in the middle of it, in its own colours. */}
+          <button onClick={() => { setShowOi(!showOi); setShowIntel(false); setShowMarkets(false); setShowAlerts(false); setShowSpaceCam(false); }}
+            className={`relative w-11 h-11 rounded-full flex flex-col items-center justify-center gap-[3px] border transition-all duration-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${showOi ? 'bg-[var(--gold-primary)]/20 border-[var(--gold-primary)]/70 shadow-[0_0_18px_rgba(var(--gold-rgb),0.35)]' : 'bg-[var(--gold-primary)]/[0.07] border-[var(--gold-primary)]/35 hover:bg-[var(--gold-primary)]/15 hover:border-[var(--gold-primary)]/60 hover:shadow-[0_0_14px_rgba(var(--gold-rgb),0.25)]'}`}
+            title="OI — talk to it and it works the map for you, or run a forecast, on your own AI key (O)" aria-label="OI" aria-expanded={showOi}>
+            <OiMark size={18} live={oi.state?.status === 'running' || assist.busy} />
+            <span className={`text-[7.5px] font-mono font-semibold tracking-[0.2em] leading-none pl-[0.2em] ${showOi ? 'text-[var(--gold-light)]' : 'text-[var(--gold-primary)]'}`}>OI</span>
+            {showOi && (
+              <span
+                aria-hidden="true"
+                className="absolute -right-1 top-1/2 -translate-y-1/2 h-5 w-[2px] rounded-full bg-current text-[var(--gold-primary)]"
+              />
+            )}
+            {oi.state?.status === 'running' && <span aria-hidden="true" className="absolute top-0 right-0 w-2 h-2 rounded-full bg-[var(--alert-green)] border border-black/60 animate-pulse" />}
+          </button>
+          <span className="absolute right-14 top-1/2 -translate-y-1/2 px-2 py-1 text-[9px] font-mono tracking-wider text-white/80 bg-black/80 backdrop-blur-sm rounded whitespace-nowrap opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity pointer-events-none">OI · ASSIST &amp; FORECAST</span>
+          <AnimatePresence>
+            {showOi && (
+              <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} className="absolute right-[60px] w-[412px]" style={{ top: oiTop }}>
+                <OiPanel oi={oi} selected={oiSelected} onSelect={setOiSelected} onClose={() => { setShowOi(false); setOiTheater(false); setOiAutoFocus(false); }}
+                  focus={oiFocus} onFocus={toggleOiFocus} onLocate={handleOiLocate}
+                  theater={oiTheater} onTheater={setOiTheater} following={oiFollowing} onFollow={followOi}
+                  assist={assist} mode={oiMode} onMode={setOiMode} speakOn={oiVoice} onSpeak={setOiVoicePersist} autoFocus={oiAutoFocus}
+                  stage={oiStage} onStage={setOiStage} />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         <div className="relative group">
