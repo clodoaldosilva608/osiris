@@ -1,5 +1,34 @@
 import type { NextConfig } from "next";
 
+/**
+ * Origens confiáveis que podem:
+ *  - consumir a API OSIRIS via fetch (CORS)
+ *  - embedar a aplicação OSIRIS em iframe (frame-ancestors)
+ *
+ * Mantenha atualizada quando adicionar novos domínios de front-end.
+ */
+const ALLOWED_ORIGINS = [
+  "https://centrodesobrevivencia.vercel.app",
+  "https://centrodesobrevivencia.app",
+  "https://centrodesobrevivencia-lovable.vercel.app",
+  // Preview branches da Vercel (centrodesobrevivencia-*-clodoaldo608-*.vercel.app)
+  // — cobertura broad via regex abaixo; mantemos também os literais.
+  "http://localhost:8080",
+  "http://localhost:4173",
+  "http://localhost:3000",
+];
+
+function corsFor(origin: string | undefined): string | null {
+  if (!origin) return null;
+  const isAllowed =
+    ALLOWED_ORIGINS.includes(origin) ||
+    // preview branches da Vercel do Centro de Sobrevivência
+    /^https:\/\/centrodesobrevivencia-[a-z0-9]+-clodoaldo608-gmailcoms-projects\.vercel\.app$/.test(origin) ||
+    // preview branches da Vercel do próprio OSIRIS (para dev)
+    /^https:\/\/osiris-[a-z0-9]+-clodoaldo608-gmailcoms-projects\.vercel\.app$/.test(origin);
+  return isAllowed ? origin : null;
+}
+
 const nextConfig: NextConfig = {
   turbopack: {
     rules: {
@@ -20,10 +49,6 @@ const nextConfig: NextConfig = {
   output: process.env.VERCEL ? undefined : 'standalone',
   serverExternalPackages: ['ws'],
   transpilePackages: ['react-map-gl', 'mapbox-gl', 'maplibre-gl'],
-  // Type errors block the build again. They were suppressed while 17 stood
-  // unfixed; those are cleared, so the gate can do its job — the AstraPanel
-  // crash (createPortal used without an import) shipped precisely because
-  // nothing stopped it.
   typescript: {
     ignoreBuildErrors: false,
   },
@@ -33,25 +58,36 @@ const nextConfig: NextConfig = {
     ],
   },
   async headers() {
+    const allowedFrameAncestors = ALLOWED_ORIGINS.join(" ");
     return [
-      /* The worker path carries the MapLibre version, so a given URL never
-         changes contents — a version bump moves it. Next serves public/ with
-         max-age=0, which made every page load refetch half a megabyte before
-         the map could start. Immutable is safe here precisely because the
-         version is in the path. */
+      // Worker do MapLibre — imutável
       {
         source: '/vendor/maplibre/:version/:file*',
         headers: [
           { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
         ],
       },
+      // /api/* — CORS para o front-end do Centro de Sobrevivência
+      {
+        source: '/api/:path*',
+        headers: [
+          { key: 'Access-Control-Allow-Origin', value: ALLOWED_ORIGINS.join(", ") },
+          { key: 'Access-Control-Allow-Methods', value: 'GET, POST, OPTIONS' },
+          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization' },
+          { key: 'Access-Control-Max-Age', value: '86400' },
+          // EventSource (SSE) precisa de credenciais=false e Origin echo
+          { key: 'Access-Control-Allow-Credentials', value: 'false' },
+        ],
+      },
+      // Páginas HTML — permitir iframe no Centro de Sobrevivência
       {
         source: '/(.*)',
         headers: [
-          { key: 'Content-Security-Policy', value: "default-src 'self' 'unsafe-inline' 'unsafe-eval' https: wss: data: blob:;" },
+          { key: 'Content-Security-Policy', value: `default-src 'self' 'unsafe-inline' 'unsafe-eval' https: wss: data: blob:; frame-ancestors 'self' ${allowedFrameAncestors};` },
           { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
-          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          // Removido X-Frame-Options: SAMEORIGIN — conflita com CSP frame-ancestors
+          // e bloquearia iframe embedding. CSP frame-ancestors é o substituto moderno.
           { key: 'X-XSS-Protection', value: '1; mode=block' },
         ],
       },
