@@ -67,27 +67,16 @@ const nextConfig: NextConfig = {
           { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
         ],
       },
-      // /api/* — CORS para o front-end do Centro de Sobrevivência
-      {
-        source: '/api/:path*',
-        headers: [
-          { key: 'Access-Control-Allow-Origin', value: ALLOWED_ORIGINS.join(", ") },
-          { key: 'Access-Control-Allow-Methods', value: 'GET, POST, OPTIONS' },
-          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization' },
-          { key: 'Access-Control-Max-Age', value: '86400' },
-          // EventSource (SSE) precisa de credenciais=false e Origin echo
-          { key: 'Access-Control-Allow-Credentials', value: 'false' },
-        ],
-      },
       // Páginas HTML — permitir iframe no Centro de Sobrevivência
+      // CORS da API é injetado dinamicamente pelo middleware (src/middleware.ts)
+      // porque a spec CORS exige que Access-Control-Allow-Origin seja UMA origem
+      // ou "*", nunca uma lista separada por vírgulas.
       {
         source: '/(.*)',
         headers: [
           { key: 'Content-Security-Policy', value: `default-src 'self' 'unsafe-inline' 'unsafe-eval' https: wss: data: blob:; frame-ancestors 'self' ${allowedFrameAncestors};` },
           { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
-          // Removido X-Frame-Options: SAMEORIGIN — conflita com CSP frame-ancestors
-          // e bloquearia iframe embedding. CSP frame-ancestors é o substituto moderno.
           { key: 'X-XSS-Protection', value: '1; mode=block' },
         ],
       },

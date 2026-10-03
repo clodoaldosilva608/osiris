@@ -1,12 +1,75 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest, NextFetchEvent } from 'next/server';
 
+/**
+ * Origens confiáveis que podem consumir a API OSIRIS via fetch (CORS) ou
+ * embedar a aplicação em iframe (frame-ancestors).
+ */
+const ALLOWED_ORIGINS = new Set([
+  "https://centrodesobrevivencia.vercel.app",
+  "https://centrodesobrevivencia.app",
+  "https://centrodesobrevivencia-lovable.vercel.app",
+  "http://localhost:8080",
+  "http://localhost:4173",
+  "http://localhost:3000",
+]);
+
+/** Padrão regex para preview branches da Vercel do Centro de Sobrevivência e do próprio OSIRIS. */
+const PREVIEW_RE = /^https:\/\/(centrodesobrevivencia|osiris)-[a-z0-9]+-clodoaldo608-gmailcoms-projects\.vercel\.app$/;
+
+function echoOrigin(origin: string | null): string | null {
+  if (!origin) return null;
+  if (ALLOWED_ORIGINS.has(origin)) return origin;
+  if (PREVIEW_RE.test(origin)) return origin;
+  return null;
+}
+
+const CORS_HEADERS = {
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Max-Age": "86400",
+  "Access-Control-Allow-Credentials": "false",
+};
+
 export function middleware(request: NextRequest, event: NextFetchEvent) {
   const url = request.nextUrl.pathname;
-  
+  const isApi = url.startsWith("/api/");
+
+  // ─── CORS para rotas /api/* ────────────────────────────────────────────
+  // A spec CORS exige que Access-Control-Allow-Origin seja uma origem ÚNICA
+  // ou "*" — não uma lista separada por vírgulas. Os navegadores rejeitam
+  // a lista, então precisamos fazer echo dinâmico da Origin do request.
+  if (isApi) {
+    const origin = request.headers.get("origin");
+    const allowedOrigin = echoOrigin(origin);
+
+    // Handle preflight
+    if (request.method === "OPTIONS") {
+      const res = new NextResponse(null, { status: 204 });
+      if (allowedOrigin) {
+        res.headers.set("Access-Control-Allow-Origin", allowedOrigin);
+      }
+      for (const [k, v] of Object.entries(CORS_HEADERS)) {
+        res.headers.set(k, v);
+      }
+      return res;
+    }
+
+    // Normal request: forward to handler with CORS headers appended
+    const res = NextResponse.next();
+    if (allowedOrigin) {
+      res.headers.set("Access-Control-Allow-Origin", allowedOrigin);
+    }
+    for (const [k, v] of Object.entries(CORS_HEADERS)) {
+      res.headers.set(k, v);
+    }
+    return res;
+  }
+
+  // ─── Analytics para páginas HTML ──────────────────────────────────────
   const ip = request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || '127.0.0.1';
   const userAgent = request.headers.get('user-agent') || 'Unknown OSIRIS Client';
-  
+
   const basePayload = {
     hostname: request.nextUrl.hostname,
     language: "en-US",
@@ -46,14 +109,13 @@ export function middleware(request: NextRequest, event: NextFetchEvent) {
   return NextResponse.next();
 }
 
-/* Assets are excluded, not just pages. MapLibre 6 loads its worker from
-   /vendor/maplibre/<version>/ at runtime, and the basemap style from
-   /dark-matter-style.json — neither is under _next/static, so both used to
-   match here and pay two umami round trips before the map could start. That is
-   the same starvation that 2f375dd fixed for the CCTV routes, moved onto the
-   map's critical path. Analytics wants page views; asset fetches are not one. */
+/* Matcher agora inclui /api/* para que o middleware possa injetar CORS.
+   Assets estáticos continuam excluídos para evitar custos de analytics. */
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|vendor|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|mjs|js|css|json|pbf|mvt|woff|woff2|ico|txt)$).*)',
+    // API routes (CORS injection)
+    '/api/:path*',
+    // Pages (analytics) — assets excluídos
+    '/((?!_next/static|_next/image|vendor|favicon.ico|sitemap.xml|robots.txt|.*\\.(?:svg|png|jpg|jpeg|gif|webp|mjs|js|css|json|pbf|mvt|woff|woff2|ico|txt)$).*)',
   ],
 }
