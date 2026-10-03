@@ -10,7 +10,8 @@ import { toMarkdown } from '@/lib/oi/client';
 import { directionWord } from '@/lib/oi/forecast';
 import type { RunState } from '@/lib/oi/state';
 import { T, leanTo, pct } from './theme';
-import { Mentions, Overline, SectionTitle, TextButton } from './atoms';
+import { Mentions, Overline, SectionTitle, TextButton, TypeIcon } from './atoms';
+import { sourceLabel } from './quotes';
 
 export function ReportBody({ s, runId, selected, onSelect }: { s: RunState; runId: string | null; selected: string | null; onSelect: (k: string | null) => void }) {
   const r = s.report!;
@@ -57,12 +58,31 @@ export function ReportBody({ s, runId, selected, onSelect }: { s: RunState; runI
               const color = leanTo(frame, d.push, d.favors);
               const actorKey = d.actor ? `a:${d.actor}` : null;
               return (
-                <button key={i} disabled={!actorKey} onClick={() => actorKey && onSelect(actorKey === selected ? null : actorKey)}
-                  className="group flex items-start gap-2.5 py-2 text-left disabled:cursor-default">
-                  {d.push === 'yes' ? <ArrowUpRight className="w-3.5 h-3.5 mt-px flex-shrink-0" style={{ color }} /> : <ArrowDownRight className="w-3.5 h-3.5 mt-px flex-shrink-0" style={{ color }} />}
-                  <span className="flex-1 text-[11.5px] leading-snug text-[var(--text-secondary)] transition-colors group-enabled:group-hover:text-[var(--text-primary)]">{d.text}</span>
-                  <span className="mt-px text-[9px] font-mono tracking-[0.12em] uppercase whitespace-nowrap" style={{ color }}>{directionWord(frame, d.push, d.favors)}</span>
-                </button>
+                <div key={i} className="py-2">
+                  <button disabled={!actorKey} onClick={() => actorKey && onSelect(actorKey === selected ? null : actorKey)}
+                    className="group w-full flex items-start gap-2.5 text-left disabled:cursor-default">
+                    {d.push === 'yes' ? <ArrowUpRight className="w-3.5 h-3.5 mt-px flex-shrink-0" style={{ color }} /> : <ArrowDownRight className="w-3.5 h-3.5 mt-px flex-shrink-0" style={{ color }} />}
+                    <span className="flex-1 text-[11.5px] leading-snug text-[var(--text-secondary)] transition-colors group-enabled:group-hover:text-[var(--text-primary)]">{d.text}</span>
+                    <span className="mt-px text-[9px] font-mono tracking-[0.12em] uppercase whitespace-nowrap" style={{ color }}>{directionWord(frame, d.push, d.favors)}</span>
+                  </button>
+                  {/* The sources it rests on: each a step back along the thread. */}
+                  {(d.sources?.length ?? 0) > 0 && (
+                    <div className="mt-1.5 ml-6 flex flex-wrap gap-1">
+                      {d.sources!.map(id => {
+                        const c = s.context.find(x => x.id === id);
+                        const key = `c:${id}`;
+                        return (
+                          <button key={id} onClick={() => onSelect(key === selected ? null : key)} title={c?.title ?? id}
+                            className={`inline-flex items-center gap-1 max-w-[220px] h-[20px] px-1.5 rounded border text-[9.5px] transition-colors ${key === selected ? 'border-[var(--border-active)] text-[var(--gold-light)]' : 'border-[var(--border-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:border-[var(--border-primary)]'}`}>
+                            <TypeIcon k={key} subtype={c?.kind} className="w-2.5 h-2.5 flex-shrink-0" />
+                            <span className="truncate">{sourceLabel(c, id)}</span>
+                            <span className="font-mono opacity-70">[{id}]</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>

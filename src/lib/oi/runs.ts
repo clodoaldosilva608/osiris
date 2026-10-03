@@ -330,6 +330,11 @@ export function runSummary(run: Run, origin: string) {
       deviation: s.report.deviation || undefined,
     } : null,
     actors: s.actors.map(a => ({ id: a.id, name: a.name, kind: a.kind, place: a.place, lat: a.lat, lng: a.lng, role: a.role, lean: a.lean })),
+    // What the panel and the report quoted: the ids in drivers' `sources` and panelists' `quotes` point here.
+    sources: s.context.map(c => ({
+      id: c.id, kind: c.kind, title: c.title, source: c.source, place: c.place || undefined, published: c.published || undefined,
+      quoted: s.links.filter(l => l.kind === 'cite' && l.to === `c:${c.id}`).length,
+    })),
     panel: s.agents.map(a => {
       const p = latest.get(a.id);
       return {
@@ -337,6 +342,7 @@ export function runSummary(run: Run, origin: string) {
         view: p ? postView(p, s.frame) : undefined,
         probability_pct: s.frame?.kind === 'binary' ? pct(p?.probability ?? null) : undefined,
         last_post: p?.text,
+        quotes: p?.cites,
       };
     }),
     injected: s.injects,

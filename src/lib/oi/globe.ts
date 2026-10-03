@@ -46,7 +46,8 @@ function lift(hex: string, amount: number): string {
   return `#${[r, g, b].map(v => v.toString(16).padStart(2, '0')).join('')}`;
 }
 
-const KIND: Record<Link['kind'], number> = { relation: 0, evidence: 1, reply: 2, focus: 3 };
+/** Quotes are not drawn on the globe (the graph follows them); they would share evidence's look if they were. */
+const KIND: Record<Link['kind'], number> = { relation: 0, evidence: 1, reply: 2, focus: 3, cite: 1 };
 const TONE: Record<Link['tone'], number> = { support: 0, oppose: 1, neutral: 2 };
 
 /* ───────────────────────────── Colours ───────────────────────────── */
@@ -790,12 +791,14 @@ export function attachOi(map: MlMap, options: OiGlobeOptions = {}): OiGlobe {
 
     // New arcs are staggered, so a burst (a replayed run, a world model) draws in sequence rather than at once.
     const version = (l: Link) => `${l.id}|${l.round}|${l.tone}`;
-    const fresh = s.links.filter(l => !births.has(version(l)));
+    // A quote's thread runs to a headline or a passage, most of them nowhere on Earth: the graph draws those.
+    const shown = s.links.filter(l => l.kind !== 'cite');
+    const fresh = shown.filter(l => !births.has(version(l)));
     const gap = fresh.length > 1 ? Math.min(0.14, 3 / fresh.length) : 0;
     fresh.forEach((l, i) => births.set(version(l), now + i * gap));
     const arcs: ArcSpec[] = [];
     drawn = [];
-    for (const l of s.links) {
+    for (const l of shown) {
       const from = pos.get(l.from);
       const to = pos.get(l.to);
       if (!from || !to || (from[0] === to[0] && from[1] === to[1])) continue;

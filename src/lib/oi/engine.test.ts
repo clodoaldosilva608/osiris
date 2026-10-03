@@ -47,7 +47,13 @@ describe('runEngine', () => {
     expect(s.posts).toHaveLength(d.agents * d.rounds);
     expect(s.rounds.map(r => r.round)).toEqual([1, 2]);
     const kinds = new Set(s.links.map(l => l.kind));
-    expect(kinds).toEqual(new Set(['relation', 'evidence', 'focus', 'reply']));
+    expect(kinds).toEqual(new Set(['relation', 'evidence', 'focus', 'reply', 'cite']));
+    // Every turn quotes the feed, word for word, and each quote is a thread to its source; none needed sending back.
+    expect(s.posts.every(p => (p.cites?.length ?? 0) > 0 && p.cites!.every(c => c.exact))).toBe(true);
+    expect(s.links.filter(l => l.kind === 'cite' && l.from.startsWith('g:')).length).toBe(s.posts.reduce((n, p) => n + p.cites!.length, 0));
+    // The report's drivers name their sources, and the report joins the graph by them.
+    expect(s.report?.drivers.every(d => (d.sources?.length ?? 0) > 0)).toBe(true);
+    expect(s.links.some(l => l.kind === 'cite' && l.from === 'r:report')).toBe(true);
     expect(s.report?.probability).toBeCloseTo(s.rounds[1].consensus, 1);
     expect(s.usage.calls).toBe(estimateCalls('quick'));
     expect(h.prompts.length).toBe(estimateCalls('quick'));
@@ -86,10 +92,16 @@ describe('runEngine', () => {
     expect(h.prompts.find(p => p.includes('This is round'))).toContain('Envoys due in Geneva');
   });
 
-  it('gives the asker data to the world model only, unless the whole panel is to read it', async () => {
+  it('lifts passages of the asker data for the panel to quote; the whole of it only when the whole panel reads it', async () => {
     const brief = harness(createDemoChat());
-    await runEngine({ question: 'Will the envoys sign a deal?', seed: 'Our channel check: 7 of 9 delegations ready.', depth: 'quick', useFeeds: false }, brief.deps);
-    expect(brief.prompts.filter(p => p.includes('7 of 9 delegations'))).toHaveLength(1);
+    await runEngine({ question: 'Will the envoys sign a deal?', seed: 'Our channel check: 7 of 9 delegations ready.\nThe hosts expect a signing in November.', depth: 'quick', useFeeds: false }, brief.deps);
+    const b = fold(brief.events);
+    // The world model's passages became sources d1, d2, and the panel quoted them.
+    expect(b.context.map(c => c.id)).toEqual(['d1', 'd2']);
+    expect(b.context[0]).toMatchObject({ kind: 'data', title: 'Our channel check: 7 of 9 delegations ready.' });
+    expect(b.posts.every(p => p.cites?.some(c => c.source.startsWith('d') && c.exact))).toBe(true);
+    // The data itself stays with the world model.
+    expect(brief.prompts.filter(p => p.includes('SEED [data]'))).toHaveLength(0);
 
     const panel = harness(createDemoChat());
     const seed = `Our channel check: 7 of 9 delegations ready.${' More rows.'.repeat(2_000)}`;
@@ -101,6 +113,40 @@ describe('runEngine', () => {
     // Every turn reads the head of the data, not all of it.
     expect(turns[0].length).toBeLessThan(seed.length);
     expect(fold(panel.events).report).not.toBeNull();
+  });
+
+  it('sends a post that quotes nothing back once, and keeps it as it is if it still quotes nothing', async () => {
+    const demo = createDemoChat();
+    // A model that leaves out its quotes: on the first ask only, or always.
+    const forgetful = (always: boolean): ChatFn => async req => {
+      const out = await demo(req);
+      if (!req.user.includes('This is round') || (!always && req.user.includes('quoted no source'))) return out;
+      const j = JSON.parse(out.text);
+      delete j.cites;
+      return { ...out, text: JSON.stringify(j) };
+    };
+    const d = DEPTHS.quick;
+    const turns = d.agents * d.rounds;
+
+    const once = harness(forgetful(false));
+    await runEngine({ question: 'Will the envoys sign a deal?', seed: '', depth: 'quick', useFeeds: true }, once.deps);
+    const s1 = fold(once.events);
+    expect(s1.posts.every(p => (p.cites?.length ?? 0) > 0)).toBe(true);
+    expect(s1.usage.calls).toBe(estimateCalls('quick') + turns);
+
+    const never = harness(forgetful(true));
+    await runEngine({ question: 'Will the envoys sign a deal?', seed: '', depth: 'quick', useFeeds: true }, never.deps);
+    const s2 = fold(never.events);
+    expect(s2.posts).toHaveLength(turns);
+    expect(s2.posts.every(p => p.cites?.length === 0)).toBe(true);
+    expect(s2.usage.calls).toBe(estimateCalls('quick') + turns);
+  });
+
+  it('asks for no quotes when there is nothing to quote', async () => {
+    const h = harness(createDemoChat());
+    await runEngine({ question: 'Will the envoys sign a deal?', seed: '', depth: 'quick', useFeeds: false }, h.deps);
+    expect(h.prompts.filter(p => p.includes('This is round')).every(p => !p.includes('"cites"'))).toBe(true);
+    expect(fold(h.events).usage.calls).toBe(estimateCalls('quick'));
   });
 
   it('puts an injected event in front of the panel from the next round on, and in the report', async () => {

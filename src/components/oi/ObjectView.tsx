@@ -5,8 +5,10 @@
  * Whatever is selected, from the globe, the graph, the timeline, the table or
  * a list, opens here as an object: its type and identity, its properties, and
  * everything it is linked to, grouped by kind of link, each a way on to the
- * next object. A panelist also shows what they said round by round; a link
- * shows the words and turns it was drawn from.
+ * next object. A panelist also shows what they said round by round, with the
+ * quotes behind it; a source shows who quoted it and what the report rests on
+ * it; a link shows the words and turns it was drawn from. Together they make
+ * a thread a reader can follow from the report back to the words it came from.
  */
 import { type ReactNode } from 'react';
 import { ArrowLeft, LocateFixed, MessageSquare, Network, X } from 'lucide-react';
@@ -18,6 +20,7 @@ import type { Link, Post } from '@/lib/oi/types';
 import { LABEL, T, ago, gold, leanTo, pct, tint, toneColor } from './theme';
 import { Avatar, IconButton, Mentions, Overline, TypeIcon, ViewTag, accentFor } from './atoms';
 import { LineGlyph } from './lists';
+import { Quotes, Verbatim, sourceLabel } from './quotes';
 
 export interface ObjectViewProps {
   s: RunState;
@@ -37,13 +40,39 @@ const TONE_WORD = { support: 'Aligned', oppose: 'Opposed', neutral: 'Between' } 
 
 /** A link to another object: its icon and its name. */
 function ObjectChip({ s, k, onSelect }: { s: RunState; k: string; onSelect: (k: string | null) => void }) {
-  const subtype = k.startsWith('a:') ? s.actors.find(a => `a:${a.id}` === k)?.kind : k.startsWith('c:') ? s.context.find(c => `c:${c.id}` === k)?.kind : '';
+  const source = k.startsWith('c:') ? s.context.find(c => `c:${c.id}` === k) : undefined;
+  const subtype = k.startsWith('a:') ? s.actors.find(a => `a:${a.id}` === k)?.kind : source?.kind ?? '';
   return (
     <button onClick={() => onSelect(k)} title={nodeName(s, k)}
       className="inline-flex items-center gap-1.5 max-w-full h-6 px-2 rounded border border-[var(--border-secondary)] bg-white/[0.02] text-[11px] text-[var(--text-primary)] hover:border-[var(--border-active)] hover:text-[var(--gold-light)] transition-colors">
       <TypeIcon k={k} subtype={subtype} className="w-3 h-3 flex-shrink-0" style={{ color: accentFor(k) }} />
       <span className="truncate">{nodeName(s, k)}</span>
+      {source && <span className="font-mono text-[9px] text-[var(--text-muted)] flex-shrink-0">[{source.id}]</span>}
     </button>
+  );
+}
+
+/** Whether the words a quote link carries were found in its source. */
+const exactOf = (s: RunState, l: Link) =>
+  s.posts.find(p => `g:${p.agent}` === l.from && p.round === l.round)?.cites?.find(c => `c:${c.source}` === l.to)?.exact ?? false;
+
+/** Who quoted a source, and in which words: each row opens the quote, with its turn. */
+function QuoteRows({ s, links, onSelect }: { s: RunState; links: Link[]; onSelect: (k: string | null) => void }) {
+  return (
+    <div className="flex flex-col gap-1">
+      {links.map(l => (
+        <button key={l.id} onClick={() => onSelect(`link:${l.id}`)}
+          className="group -mx-1.5 px-1.5 py-1.5 rounded text-left transition-colors hover:bg-[var(--hover-accent)]">
+          <span className="flex items-center gap-2">
+            <Avatar name={nodeName(s, l.from)} size={18} />
+            <span className="text-[11px] font-medium truncate text-[var(--text-primary)]">{nodeName(s, l.from)}</span>
+            <span className="text-[9px] font-mono tracking-[0.1em] uppercase text-[var(--text-muted)]">round {l.round}</span>
+            <span className="ml-auto"><Verbatim exact={exactOf(s, l)} /></span>
+          </span>
+          <span className="mt-1 block pl-[26px] text-[11px] leading-snug text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">“{l.label}”</span>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -108,6 +137,7 @@ function PostCard({ s, post, note, onSelect }: { s: RunState; post: Post; note?:
         <span className="ml-auto"><ViewTag post={post} frame={s.frame} /></span>
       </div>
       <p className="mt-1.5 text-[11.5px] leading-[1.55] text-[var(--text-secondary)]"><Mentions text={post.text} s={s} onSelect={onSelect} /></p>
+      <Quotes s={s} cites={post.cites} onSelect={onSelect} />
       {post.reasoning && <p className="mt-1 text-[10.5px] italic leading-snug text-[var(--text-muted)]">{post.reasoning}</p>}
       {post.changed && post.changed.toLowerCase() !== 'nothing' && <p className="mt-1 text-[10.5px] text-[var(--text-muted)]">Moved by {post.changed.replace(/^\w/, c => c.toLowerCase())}</p>}
     </div>
@@ -164,14 +194,17 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
       inGraph = true;
       const a = place(l.from), b = place(l.to);
       if (a && b) locate = { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2, zoom: 2.2 };
-      const verb = l.kind === 'relation' ? '⇄' : l.kind === 'evidence' ? '→' : l.kind === 'reply' ? (l.tone === 'support' ? 'agrees with' : l.tone === 'oppose' ? 'disputes' : 'questions') : l.round ? 'weighing' : 'watches';
-      title = <>{nodeName(s, l.from)} <span className="font-normal text-[var(--text-muted)]">{verb}</span> {nodeName(s, l.to)}</>;
+      const fromReport = l.from === 'r:report';
+      const verb = l.kind === 'cite' ? (fromReport ? 'rests on' : 'quotes')
+        : l.kind === 'relation' ? '⇄' : l.kind === 'evidence' ? '→' : l.kind === 'reply' ? (l.tone === 'support' ? 'agrees with' : l.tone === 'oppose' ? 'disputes' : 'questions') : l.round ? 'weighing' : 'watches';
+      const quotedSource = l.kind === 'cite' ? s.context.find(c => `c:${c.id}` === l.to) : undefined;
+      title = <>{nodeName(s, l.from)} <span className="font-normal text-[var(--text-muted)]">{verb}</span> {l.kind === 'cite' ? sourceLabel(quotedSource, l.to.slice(2)) : nodeName(s, l.to)}</>;
       const evidenceEffect = s.frame?.kind === 'number' ? (l.tone === 'support' ? 'Points higher' : l.tone === 'oppose' ? 'Points lower' : 'Bears on')
         : l.tone === 'support' ? 'Points toward YES' : l.tone === 'oppose' ? 'Points toward NO' : 'Bears on';
       props = [
         ['Tone', <span key="t" className="inline-flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ background: accent }} />{l.kind === 'evidence' ? evidenceEffect : TONE_WORD[l.tone]}</span>],
         ['Strength', <StrengthBar key="s" value={l.strength} color={accent} />],
-        ['Round', l.round ? `Round ${l.round}` : 'World model'],
+        ['Round', l.kind === 'cite' && fromReport ? 'The report' : l.round ? `Round ${l.round}` : 'World model'],
         ['From', <ObjectChip key="f" s={s} k={l.from} onSelect={onSelect} />],
         ['To', <ObjectChip key="o" s={s} k={l.to} onSelect={onSelect} />],
       ];
@@ -182,7 +215,21 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
       const item = l.kind === 'evidence' ? s.context.find(c => `c:${c.id}` === l.from) : undefined;
       body = (
         <>
-          {l.label && l.kind !== 'focus' && (
+          {l.kind === 'cite' && !fromReport && (
+            <div className="flex flex-col gap-1.5">
+              <blockquote className="pl-2.5 text-[12.5px] leading-relaxed text-[var(--text-heading)] border-l-2" style={{ borderColor: accent }}>“{l.label}”</blockquote>
+              <span className="pl-3"><Verbatim exact={exactOf(s, l)} /></span>
+            </div>
+          )}
+          {l.kind === 'cite' && quotedSource && (
+            <Group label={fromReport ? 'The source' : 'Where it comes from'}>
+              <div className="rounded-md border border-[var(--border-secondary)] bg-black/25 px-3 py-2">
+                <p className="text-[11.5px] leading-snug text-[var(--text-primary)]">{quotedSource.kind === 'data' && quotedSource.id !== 'data' ? `“${quotedSource.title}”` : quotedSource.title}</p>
+                <p className="mt-1 text-[9.5px] font-mono tracking-[0.08em] text-[var(--text-muted)]">{[`[${quotedSource.id}]`, sourceLabel(quotedSource, quotedSource.id), quotedSource.place, ago(quotedSource.published)].filter(Boolean).join(' · ')}</p>
+              </div>
+            </Group>
+          )}
+          {l.label && l.kind !== 'focus' && !(l.kind === 'cite' && !fromReport) && (
             <blockquote className="pl-2.5 text-[12px] leading-relaxed text-[var(--text-primary)] border-l-2" style={{ borderColor: accent }}>
               {l.kind === 'reply' ? `“${l.label}”` : l.label}
             </blockquote>
@@ -271,16 +318,40 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
     case 'context': {
       const c = sel.item;
       type = TYPE_LABEL.source;
-      subtype = c.kind === 'quake' ? 'earthquake' : c.kind === 'market' ? 'markets' : 'news';
+      subtype = c.kind === 'quake' ? 'earthquake' : c.kind === 'market' ? 'markets' : c.kind === 'data' ? 'your data' : 'news';
       iconSub = c.kind;
-      title = c.title;
+      title = c.kind === 'data' && c.id !== 'data' ? `“${c.title}”` : c.title;
       if (c.lat !== null && c.lng !== null) locate = { lat: c.lat, lng: c.lng, zoom: 4 };
       const bears = s.links.filter(l => l.kind === 'evidence' && l.from === sel.key);
-      inGraph = bears.length > 0;
-      props = [['Source', c.source], ['Location', c.place], ['Published', c.published ? `${new Date(c.published).toLocaleString()} · ${ago(c.published)}` : '']];
-      body = bears.length
-        ? <Group label="Cited against" count={bears.length}><LinkRows s={s} links={bears} from={sel.key} onSelect={onSelect} /></Group>
-        : <p className="text-[11px] text-[var(--text-muted)]">Read by the panel; not cited against a particular actor.</p>;
+      const quotedBy = s.links.filter(l => l.kind === 'cite' && l.to === sel.key && l.from.startsWith('g:')).sort((a, b) => a.round - b.round);
+      const inReport = s.links.filter(l => l.kind === 'cite' && l.to === sel.key && l.from === 'r:report');
+      inGraph = bears.length + quotedBy.length + inReport.length > 0;
+      props = [
+        ['Id', <span key="i" className="font-mono">[{c.id}]</span>],
+        [c.kind === 'data' ? 'From' : 'Source', sourceLabel(c, c.id)],
+        ['Location', c.place],
+        ['Published', c.published ? `${new Date(c.published).toLocaleString()} · ${ago(c.published)}` : ''],
+        ['Quoted', quotedBy.length ? <span key="q" className="font-mono tabular-nums">{quotedBy.length}× by {new Set(quotedBy.map(l => l.from)).size} panelist{new Set(quotedBy.map(l => l.from)).size === 1 ? '' : 's'}</span> : null],
+      ];
+      body = (
+        <>
+          {inReport.length > 0 && (
+            <Group label="The report rests on it" count={inReport.length}>
+              <div className="flex flex-col gap-1">
+                {inReport.map(l => (
+                  <button key={l.id} onClick={() => onSelect(`link:${l.id}`)} className="group flex items-start gap-2 -mx-1.5 px-1.5 py-1 rounded text-left hover:bg-[var(--hover-accent)]">
+                    <TypeIcon k="r:report" className="w-3 h-3 mt-0.5 flex-shrink-0" style={{ color: T.goldLight }} />
+                    <span className="text-[11px] leading-snug text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">{l.label}</span>
+                  </button>
+                ))}
+              </div>
+            </Group>
+          )}
+          {quotedBy.length > 0 && <Group label="Quoted by" count={quotedBy.length}><QuoteRows s={s} links={quotedBy} onSelect={onSelect} /></Group>}
+          {bears.length > 0 && <Group label="Cited against" count={bears.length}><LinkRows s={s} links={bears} from={sel.key} onSelect={onSelect} /></Group>}
+          {!inGraph && <p className="text-[11px] text-[var(--text-muted)]">Read by the panel; nobody quoted it.</p>}
+        </>
+      );
       break;
     }
     case 'scenario': {
@@ -290,6 +361,38 @@ export function ObjectView({ s, sel, onSelect, onLocate, onAsk, onGraph, variant
       if (sc.lat !== null && sc.lng !== null) locate = { lat: sc.lat, lng: sc.lng, zoom: 4 };
       props = [['Probability', <span key="p" className="font-mono text-[var(--gold-light)]">{pct(sc.probability)}</span>], ['Plays out in', sc.place]];
       body = <p className="text-[11.5px] leading-relaxed text-[var(--text-secondary)]"><Mentions text={sc.description} s={s} onSelect={onSelect} /></p>;
+      break;
+    }
+    case 'report': {
+      const r = sel.report;
+      type = TYPE_LABEL.report;
+      subtype = `${r.confidence} confidence`;
+      title = r.headline;
+      inGraph = s.links.some(l => l.from === sel.key);
+      const used = [...new Set(r.drivers.flatMap(d => d.sources ?? []))];
+      props = [
+        ['Answer', <span key="a" className="font-mono text-[var(--gold-light)]">{r.answer}</span>],
+        ['Sources', used.length ? <span key="s" className="font-mono tabular-nums">{used.length}</span> : null],
+      ];
+      body = (
+        <>
+          <p className="text-[11.5px] leading-relaxed text-[var(--text-secondary)]"><Mentions text={r.summary} s={s} onSelect={onSelect} /></p>
+          {r.drivers.length > 0 && (
+            <Group label="Drivers, and what they rest on" count={r.drivers.length}>
+              <div className="flex flex-col gap-2.5">
+                {r.drivers.map((d, i) => (
+                  <div key={i} className="flex flex-col gap-1.5">
+                    <span className="text-[11.5px] leading-snug text-[var(--text-primary)]">{d.text}</span>
+                    {(d.sources?.length ?? 0) > 0
+                      ? <div className="flex flex-wrap gap-1.5">{d.sources!.map(id => <ObjectChip key={id} s={s} k={`c:${id}`} onSelect={onSelect} />)}</div>
+                      : <span className={`${LABEL} !text-[7.5px] text-[var(--text-muted)]`}>No source given</span>}
+                  </div>
+                ))}
+              </div>
+            </Group>
+          )}
+        </>
+      );
       break;
     }
     case 'signpost': {

@@ -314,13 +314,21 @@ export function toMarkdown(s: RunState, url: string): string {
   if (s.frame) lines.push('', '```', questionBlock(s.frame), '```');
   if (r) {
     lines.push('', `## Forecast: ${r.answer} (${r.confidence} confidence)`, r.deviation, '', r.summary);
-    if (r.drivers.length) lines.push('', '## Drivers', ...r.drivers.map(d => `- ${d.text} (${directionWord(s.frame, d.push, d.favors)})`));
+    const refs = (ids: string[] | undefined) => (ids?.length ? ` ${ids.map(id => `[${id}]`).join('')}` : '');
+    if (r.drivers.length) lines.push('', '## Drivers', ...r.drivers.map(d => `- ${d.text} (${directionWord(s.frame, d.push, d.favors)})${refs(d.sources)}`));
     if (r.scenarios.length) lines.push('', '## Scenarios', ...r.scenarios.map(x => `- **${x.name}** (${pct(x.probability)}): ${x.description}`));
     if (r.signposts.length) lines.push('', '## Signposts', ...r.signposts.map(x => `- ${x.text}${x.place ? ` (${x.place})` : ''}: points ${directionWord(s.frame, x.means, x.favors)}`));
     if (r.dissent) lines.push('', '## Dissent', r.dissent);
     if (r.caveats.length) lines.push('', '## Caveats', ...r.caveats.map(c => `- ${c}`));
   }
   if (s.rounds.length && s.frame) lines.push('', '## The panel by round', ...s.rounds.map(x => `- ${trajectoryLine(s.frame!, x)}`));
+  // The thread back to the words: what each panelist quoted last, then every source quoted or cited.
+  const names = new Map(s.agents.map(a => [a.id, a.name]));
+  const last = [...new Map(s.posts.map(p => [p.agent, p])).values()].filter(p => p.cites?.length);
+  if (last.length) lines.push('', '## What the panel quoted', ...last.flatMap(p => p.cites!.map(c => `- **${names.get(p.agent) ?? p.agent}** (round ${p.round}): “${c.quote}” [${c.source}]${c.exact ? '' : ' (paraphrase)'}`)));
+  const used = new Set(s.links.filter(l => l.kind === 'cite' || l.kind === 'evidence').flatMap(l => [l.from, l.to]).filter(k => k.startsWith('c:')).map(k => k.slice(2)));
+  const sources = s.context.filter(c => used.has(c.id));
+  if (sources.length) lines.push('', '## Sources', ...sources.map(c => `- [${c.id}] ${c.kind === 'data' && c.id !== 'data' ? `“${c.title}”` : c.title} (${[c.source, c.place, c.published.slice(0, 10)].filter(Boolean).join(', ')})`));
   lines.push('', `Run on ${s.provider} / ${s.model}, ${s.usage.calls} model calls. Watch: ${url}`, '', '_OSIRIS OI: swarm forecasting after MiroFish, rebuilt natively. A simulation, not a guarantee._');
   return lines.filter(l => l !== '').join('\n').replace(/\n(#+ )/g, '\n\n$1');
 }

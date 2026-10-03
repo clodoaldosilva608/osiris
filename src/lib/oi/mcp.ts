@@ -81,7 +81,7 @@ export const TOOLS = [
       properties: {
         run_id: RUN_ID,
         wait_seconds: { type: 'integer', minimum: 0, maximum: 280, description: 'Wait up to this long for the run to finish. Default 0.' },
-        include_posts: { type: 'boolean', description: 'Include every panel post, round by round. Default false.' },
+        include_posts: { type: 'boolean', description: 'Include every panel post, round by round, with the quotes behind it (each a source id from sources, the words, and whether they were found verbatim). Default false.' },
       },
       required: ['run_id'],
       additionalProperties: false,
@@ -238,7 +238,7 @@ function postsOf(run: Run) {
   const names = new Map(run.state.agents.map(a => [a.id, a.name]));
   return run.state.posts.map(p => ({
     round: p.round, agent: p.agent, name: names.get(p.agent), view: postView(p, run.state.frame),
-    confidence: p.confidence, post: p.text, replies: p.replies, changed: p.changed || undefined,
+    confidence: p.confidence, post: p.text, quotes: p.cites, replies: p.replies, changed: p.changed || undefined,
   }));
 }
 

@@ -4,11 +4,14 @@
  *
  * The run as a network, after MiroFish's knowledge graph: every actor,
  * panelist and cited source as a node carrying its type's icon, every
- * relation, exchange, weighing and citation as an edge in the arcs' own
- * colours, all on screen at once. The filter panel turns kinds of node and
- * link on and off and switches between a free (force) layout and a flow from
- * sources to the world to the panel; Isolate keeps only a selection and its
- * neighbours. A click opens the same object as the globe.
+ * relation, exchange, weighing and quote as an edge in the arcs' own
+ * colours, all on screen at once. Each quote is a dotted thread from the
+ * panelist to the source it came from, and the report joins at the end with
+ * a thread to every source its drivers rest on. The filter panel turns kinds
+ * of node and link on and off and switches between a free (force) layout and
+ * a flow from the sources to the world, the panel and the report; Isolate
+ * keeps only a selection and its neighbours. A click opens the same object
+ * as the globe.
  *
  * The layout is a small force simulation (lib/oi/graph). React draws the
  * elements; positions are written straight onto them each frame, so a tick
@@ -25,10 +28,13 @@ import type { LinkKind } from '@/lib/oi/types';
 import { LABEL, T, toneColor } from './theme';
 import { Segmented, TypeIcon } from './atoms';
 
-const BASE_OPACITY: Record<GraphEdge['kind'], number> = { relation: 0.85, reply: 0.7, focus: 0.42, evidence: 0.5 };
-const NODE_LABEL: Record<GraphNodeKind, string> = { actor: 'Actors', agent: 'Panelists', evidence: 'Sources' };
-const COLUMN_LABEL: Record<GraphNodeKind, string> = { evidence: 'SOURCES', actor: 'WORLD', agent: 'PANEL' };
-const NODE_COLOR: Record<GraphNodeKind, string> = { actor: T.gold, agent: T.cyan, evidence: T.body };
+const BASE_OPACITY: Record<GraphEdge['kind'], number> = { relation: 0.85, reply: 0.7, focus: 0.42, evidence: 0.5, cite: 0.6 };
+const NODE_LABEL: Record<GraphNodeKind, string> = { actor: 'Actors', agent: 'Panelists', evidence: 'Sources', report: 'Report' };
+const COLUMN_LABEL: Record<GraphNodeKind, string> = { evidence: 'SOURCES', actor: 'WORLD', agent: 'PANEL', report: 'REPORT' };
+const NODE_COLOR: Record<GraphNodeKind, string> = { actor: T.gold, agent: T.cyan, evidence: T.body, report: T.goldLight };
+/** A quote's thread: dotted, so it reads apart from the arcs. */
+const CITE_DASH = '1.5 3.5';
+const LINK_FILTER_LABEL: Record<LinkKind, string> = { relation: 'Relations', evidence: 'Evidence', reply: 'Exchanges', focus: 'Weighing', cite: 'Quotes' };
 const FILTER_W = 196;
 
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
@@ -249,12 +255,12 @@ export function GraphView({ s, selected, onSelect }: { s: RunState; selected: st
   const hoverBrief = hover ? brief(s, hover) : null;
 
   const nodeCounts = useMemo(() => {
-    const c: Record<GraphNodeKind, number> = { actor: 0, agent: 0, evidence: 0 };
+    const c: Record<GraphNodeKind, number> = { actor: 0, agent: 0, evidence: 0, report: 0 };
     for (const n of full.nodes) c[n.kind]++;
     return c;
   }, [full]);
   const edgeCounts = useMemo(() => {
-    const c: Record<LinkKind, number> = { relation: 0, evidence: 0, reply: 0, focus: 0 };
+    const c: Record<LinkKind, number> = { relation: 0, evidence: 0, reply: 0, focus: 0, cite: 0 };
     for (const e of full.edges) c[e.kind]++;
     return c;
   }, [full]);
@@ -287,10 +293,11 @@ export function GraphView({ s, selected, onSelect }: { s: RunState; selected: st
               return (
                 <path key={e.key} ref={edgeRef(e.key)} fill="none" vectorEffect="non-scaling-stroke"
                   className={`oi-graph-in ${e.kind === 'focus' ? 'oi-graph-march' : ''}`}
+                  strokeLinecap={e.kind === 'cite' ? 'round' : undefined}
                   style={{
-                    stroke: e.kind === 'evidence' ? `color-mix(in srgb, ${tone} 60%, #ddd8f0)` : tone,
-                    strokeWidth: (e.kind === 'relation' ? 1 + e.strength * 1.6 : e.kind === 'reply' ? 0.9 + e.strength : 1) + (on ? 0.8 : 0),
-                    strokeDasharray: e.kind === 'focus' ? '4 4' : undefined,
+                    stroke: e.kind === 'evidence' || e.kind === 'cite' ? `color-mix(in srgb, ${tone} 60%, #ddd8f0)` : tone,
+                    strokeWidth: (e.kind === 'relation' ? 1 + e.strength * 1.6 : e.kind === 'reply' ? 0.9 + e.strength : e.kind === 'cite' ? 1.4 : 1) + (on ? 0.8 : 0),
+                    strokeDasharray: e.kind === 'focus' ? '4 4' : e.kind === 'cite' ? CITE_DASH : undefined,
                     opacity: lit ? (on ? 1 : 0.06) : BASE_OPACITY[e.kind],
                     transition: 'opacity .25s ease',
                   }} />
@@ -311,9 +318,10 @@ export function GraphView({ s, selected, onSelect }: { s: RunState; selected: st
           <g style={{ pointerEvents: 'none' }}>
             {graph.edges.map(e => {
               const isLit = Boolean(lit?.edges.has(e.key));
+              // A quote's words show when its thread is under the pointer or its panelist or source is.
               const show = e.label && (active === e.key || (labels
                 ? (!lit || isLit) && e.kind !== 'focus'
-                : Boolean(hover) && isLit && (e.kind === 'relation' || e.kind === 'reply')));
+                : Boolean(hover) && isLit && (e.kind === 'relation' || e.kind === 'reply' || e.kind === 'cite')));
               if (!show) return null;
               return (
                 <text key={e.key} ref={el => {
@@ -325,7 +333,7 @@ export function GraphView({ s, selected, onSelect }: { s: RunState; selected: st
                 }}
                   textAnchor="middle" dy="0.35em" className="font-mono"
                   style={{ fontSize: 'calc(9px * var(--ls, 1))', fill: 'var(--text-secondary)', stroke: 'rgba(4,4,10,0.92)', strokeWidth: 3, paintOrder: 'stroke', strokeLinejoin: 'round' }}>
-                  {clip(e.label, 30)}
+                  {e.kind === 'cite' && e.from.startsWith('g:') ? `“${clip(e.label, 34)}”` : clip(e.label, 30)}
                 </text>
               );
             })}
@@ -353,7 +361,7 @@ export function GraphView({ s, selected, onSelect }: { s: RunState; selected: st
             <FilterGroup label="Nodes">
               {(Object.keys(NODE_LABEL) as GraphNodeKind[]).map(k => (
                 <FilterRow key={k} on={!hideNodes.has(k)} count={nodeCounts[k]} onClick={() => setHideNodes(h => toggle(h, k))}
-                  mark={<TypeIcon k={k === 'actor' ? 'a:' : k === 'agent' ? 'g:' : 'c:'} subtype={k === 'actor' ? 'state' : 'news'} className="w-3 h-3" style={{ color: NODE_COLOR[k] }} />}>
+                  mark={<TypeIcon k={k === 'actor' ? 'a:' : k === 'agent' ? 'g:' : k === 'report' ? 'r:' : 'c:'} subtype={k === 'actor' ? 'state' : 'news'} className="w-3 h-3" style={{ color: NODE_COLOR[k] }} />}>
                   {NODE_LABEL[k]}
                 </FilterRow>
               ))}
@@ -361,15 +369,15 @@ export function GraphView({ s, selected, onSelect }: { s: RunState; selected: st
             <FilterGroup label="Links">
               {(Object.keys(LINK_LABEL) as LinkKind[]).map(k => (
                 <FilterRow key={k} on={!hideEdges.has(k)} count={edgeCounts[k]} onClick={() => setHideEdges(h => toggle(h, k))}
-                  mark={<svg width="14" height="6" aria-hidden><line x1="1" x2="13" y1="3" y2="3" strokeWidth="2" strokeLinecap="round" strokeDasharray={k === 'focus' ? '3 3' : undefined} style={{ stroke: k === 'evidence' ? T.body : T.neutral }} /></svg>}>
-                  {k === 'reply' ? 'Exchanges' : k === 'focus' ? 'Weighing' : `${LINK_LABEL[k]}${k === 'relation' ? 's' : ''}`}
+                  mark={<svg width="14" height="6" aria-hidden><line x1="1" x2="13" y1="3" y2="3" strokeWidth="2" strokeLinecap="round" strokeDasharray={k === 'focus' ? '3 3' : k === 'cite' ? '0.5 3' : undefined} style={{ stroke: k === 'evidence' || k === 'cite' ? T.body : T.neutral }} /></svg>}>
+                  {LINK_FILTER_LABEL[k]}
                 </FilterRow>
               ))}
             </FilterGroup>
             <FilterGroup label="Layout">
               <Segmented id="graph-layout" size="sm" value={mode} onChange={setMode} options={[
                 { value: 'force', label: 'Force', title: 'Let the network find its own shape' },
-                { value: 'flow', label: 'Flow', title: 'Sources, then the world, then the panel, left to right' },
+                { value: 'flow', label: 'Flow', title: 'Sources, then the world, the panel and the report, left to right' },
               ]} />
             </FilterGroup>
           </div>
@@ -451,22 +459,23 @@ function GraphNodeMark({ n, refFn, selected, dim, showLabel, thinking, onDown, o
   const color = NODE_COLOR[n.kind];
   const icon = n.radius * 1.05;
   const label = n.kind === 'evidence' ? clip(n.label, 36) : n.label;
-  const ring: CSSProperties = { fill: 'var(--bg-secondary)', stroke: color, strokeWidth: n.kind === 'evidence' ? 1 : 1.5 };
+  const ring: CSSProperties = { fill: 'var(--bg-secondary)', stroke: color, strokeWidth: n.kind === 'evidence' ? 1 : n.kind === 'report' ? 2 : 1.5 };
   return (
     <g ref={refFn} data-oi-node={n.key} style={{ cursor: 'pointer', opacity: dim ? 0.16 : 1, transition: 'opacity .25s ease' }}
       onPointerDown={onDown} onPointerEnter={onEnter} onPointerLeave={onLeave}>
       <g className="oi-graph-in">
         {thinking && <circle r={n.radius + 6} className="oi-graph-ping" style={{ fill: 'none', stroke: T.cyan, strokeWidth: 1.2 }} vectorEffect="non-scaling-stroke" />}
         {selected && <circle r={n.radius + 5} style={{ fill: 'none', stroke: '#fff', strokeWidth: 1.5, filter: 'drop-shadow(0 0 6px rgba(var(--gold-rgb),0.8))' }} vectorEffect="non-scaling-stroke" />}
+        {n.kind === 'report' && <circle r={n.radius + 4} style={{ fill: 'none', stroke: color, strokeWidth: 1, opacity: 0.35 }} vectorEffect="non-scaling-stroke" />}
         <circle r={n.radius} style={ring} vectorEffect="non-scaling-stroke" />
         <circle r={n.radius} style={{ fill: color, opacity: 0.12 }} />
         <TypeIcon k={n.key} subtype={n.subtype} x={-icon / 2} y={-icon / 2} width={icon} height={icon} strokeWidth={1.8} style={{ color, pointerEvents: 'none' }} />
         {showLabel && (
           <text y={n.radius} dy="1.3em" textAnchor="middle" className={n.kind === 'evidence' ? 'font-mono' : ''}
             style={{
-              fontSize: `calc(${n.kind === 'actor' ? 10.5 : n.kind === 'agent' ? 10 : 9}px * var(--ls, 1))`,
-              fontWeight: n.kind === 'actor' ? 600 : 500,
-              fill: n.kind === 'actor' ? 'var(--text-heading)' : n.kind === 'agent' ? 'var(--text-primary)' : 'var(--text-secondary)',
+              fontSize: `calc(${n.kind === 'actor' || n.kind === 'report' ? 10.5 : n.kind === 'agent' ? 10 : 9}px * var(--ls, 1))`,
+              fontWeight: n.kind === 'actor' || n.kind === 'report' ? 600 : 500,
+              fill: n.kind === 'actor' ? 'var(--text-heading)' : n.kind === 'report' ? 'var(--gold-light)' : n.kind === 'agent' ? 'var(--text-primary)' : 'var(--text-secondary)',
               stroke: 'rgba(4,4,10,0.92)', strokeWidth: 3, paintOrder: 'stroke', strokeLinejoin: 'round', pointerEvents: 'none',
             }}>
             {label}
@@ -490,6 +499,7 @@ function GraphLegend() {
       {line('OPPOSED', T.oppose)}
       {line('BETWEEN', T.neutral)}
       {line('WEIGHING', T.neutral, '3 3')}
+      {line('QUOTE', T.body, '0.5 3')}
     </div>
   );
 }

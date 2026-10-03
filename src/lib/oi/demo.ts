@@ -70,6 +70,18 @@ const figure = (u: string, label: string) => {
   return m ? parseFloat(m[1].replace(/,/g, '')) : null;
 };
 
+/** The first words of a text, cut at a word, as a quote copied from it. */
+const opening = (t: string, words = 9) => t.split(/\s+/).slice(0, words).join(' ').replace(/[,;:]$/, '');
+
+/** The sources a prompt lists, by id, with the words each says. */
+function feedSources(u: string): { id: string; says: string }[] {
+  return [...u.matchAll(/^\[([cd]\d+)\] (.*)$/gm)].map(m => {
+    const rest = m[2];
+    const quoted = /— "(.*)"$/.exec(rest);
+    return { id: m[1], says: quoted ? quoted[1] : rest.split(' — ').slice(1).join(' — ') };
+  }).filter(x => x.says.trim());
+}
+
 function answer(req: ChatRequest): string {
   // OI Assist has its own script: the conversation, not the forecast pipeline.
   if (req.system.startsWith(ASSIST_SYSTEM_START)) return demoAssist(req.user);
@@ -77,6 +89,9 @@ function answer(req: ChatRequest): string {
   if (u.includes('Build the world model')) {
     const cites = [...u.matchAll(/^\[(c\d+)\]/gm)].map(m => m[1]).slice(0, 5);
     const question = (u.match(/QUESTION: (.*)/)?.[1] ?? 'The event happens').trim();
+    // Passages of the asker's data, copied as they are: its longer lines, headings left out.
+    const seed = /SEED \(material[^\n]*\n<<<\n([\s\S]*?)\n>>>/.exec(u)?.[1] ?? '';
+    const passages = seed === '(none)' ? [] : seed.split('\n').map(l => l.trim()).filter(l => l.length >= 20 && !l.startsWith('###')).slice(0, 3).map(l => opening(l, 24));
     const kind = kindOf(question);
     return JSON.stringify({
       kind,
@@ -90,7 +105,8 @@ function answer(req: ChatRequest): string {
       focus: { place: 'Geneva', lat: 46.2, lng: 6.14 },
       actors: ACTORS.map(a => ({ ...a, role: `${a.name} sets the pace on this question.` })),
       relations: RELATIONS.map(([from, to, kind, strength]) => ({ from, to, kind, strength, note: `${from} and ${to}: ${kind}` })),
-      evidence: cites.map((c, i) => ({ source: c, actor: ACTORS[i % ACTORS.length].id, effect: i % 2 ? 'no' : 'yes', note: 'Bears on the outcome.' })),
+      evidence: [...cites, ...passages.map((_, i) => `d${i + 1}`)].map((c, i) => ({ source: c, actor: ACTORS[i % ACTORS.length].id, effect: i % 2 ? 'no' : 'yes', note: 'Bears on the outcome.' })),
+      ...(passages.length ? { quotes: passages.map(text => ({ text, note: 'From your data.' })) } : {}),
     });
   }
   if (u.includes('Assemble a panel of')) {
@@ -112,6 +128,10 @@ function answer(req: ChatRequest): string {
     const breaking = u.includes('BREAKING') ? 0.08 : 0;
     const target = others[Math.floor(hash(name + round) * others.length)];
     const kind = /^KIND: (\w+)/m.exec(u)?.[1] ?? 'binary';
+    // Quote a source or two, word for word, when there is one to quote.
+    const sources = u.includes('"cites"') ? feedSources(u) : [];
+    const pick = (k: number) => sources[Math.floor(hash(name + round + k) * sources.length)];
+    const cites = [...new Set([pick(0), pick(1)].filter(Boolean))].map(src => ({ source: src.id, quote: opening(src.says) }));
     const shape: Record<string, unknown> = {};
     if (kind === 'choice') {
       const n = (u.match(/^OUTCOMES: (.*)$/m)?.[1].match(/\d+\./g) ?? []).length || 4;
@@ -135,6 +155,7 @@ function answer(req: ChatRequest): string {
         ? `Opening view from ${name.split(' ')[0]}: the base rate is the anchor, and nothing in the feed moves me far off it yet.`
         : `Round ${round}: ${target ? `${target.replace(/_/g, ' ')} makes a fair point, ` : ''}but the incentives still cut the other way.`,
       reasoning: 'Base rate first, then the strongest actor incentives.',
+      ...(cites.length ? { cites } : {}),
       replies: target ? [{ to: target, stance: hash(target + round) > 0.5 ? 'agree' : 'disagree', point: 'Your timeline looks too tight.' }] : [],
       focus: [ACTORS[Math.floor(hash(name + round) * ACTORS.length)].id],
       changed: round === 1 ? 'nothing' : 'The panel’s spread narrowed.',
@@ -144,6 +165,8 @@ function answer(req: ChatRequest): string {
     const swarm = Number(u.match(/consensus is (\d+)%/)?.[1] ?? 40) / 100;
     const kind = /^KIND: (\w+)/m.exec(u)?.[1] ?? 'binary';
     const median = parseFloat(u.match(/median is ([-0-9.,]+)/)?.[1]?.replace(/,/g, '') ?? '');
+    const ids = feedSources(u).map(x => x.id);
+    const sourced = (k: number) => (ids.length ? { sources: [ids[k % ids.length], ids[(k + 2) % ids.length]].filter((v, i, a) => a.indexOf(v) === i) } : {});
     const answerFields = kind === 'choice'
       ? { shares: [0.46, 0.29, 0.17, 0.08] }
       : kind === 'number' && Number.isFinite(median)
@@ -155,9 +178,9 @@ function answer(req: ChatRequest): string {
       confidence: 'medium',
       summary: 'The panel converged below even odds. The base rate anchors the view, while the minority sees a faster path if the main actors align. The spread narrowed every round.',
       drivers: [
-        { text: 'Great-power rivalry limits room for a deal', push: 'no', weight: 0.7, actor: 'china' },
-        { text: 'Allied coordination is unusually tight', push: 'yes', weight: 0.5, actor: 'eu' },
-        { text: 'Energy prices raise the cost of escalation', push: 'no', weight: 0.4, actor: 'opec' },
+        { text: 'Great-power rivalry limits room for a deal', push: 'no', weight: 0.7, actor: 'china', ...sourced(0) },
+        { text: 'Allied coordination is unusually tight', push: 'yes', weight: 0.5, actor: 'eu', ...sourced(1) },
+        { text: 'Energy prices raise the cost of escalation', push: 'no', weight: 0.4, actor: 'opec', ...sourced(2) },
       ],
       scenarios: [
         { name: 'Muddle through', probability: 0.5, description: 'No decisive move before the horizon.', place: 'Brussels', lat: 50.85, lng: 4.35 },

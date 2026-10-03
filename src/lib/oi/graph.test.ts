@@ -38,6 +38,25 @@ describe('the research as a graph', () => {
     expect(g.nodes.find(n => n.key === 'c:c1')?.kind).toBe('evidence');
   });
 
+  it('threads every quote to its source, and joins the report to the sources its drivers rest on', () => {
+    const quoted: RunState = {
+      ...s,
+      report: { headline: 'Talks stall', answer: '30% YES', probability: 0.3, swarm: 0.3, confidence: 'medium', summary: '', drivers: [], scenarios: [], signposts: [], dissent: '', caveats: [], deviation: '' },
+      links: [
+        ...s.links,
+        link({ id: 'qt:mara:c2:1', from: 'g:mara', to: 'c:c2', kind: 'cite', tone: 'neutral', round: 1, label: 'Unrelated headline' }),
+        link({ id: 'rq:0:c2', from: 'r:report', to: 'c:c2', kind: 'cite', tone: 'oppose', round: 2, label: 'Talks stall' }),
+      ],
+    };
+    const q = buildGraph(quoted);
+    // A source only quoted (never cited by the world model) is on the graph, and so is the report.
+    expect(q.nodes.find(n => n.key === 'c:c2')?.kind).toBe('evidence');
+    expect(q.nodes.find(n => n.key === 'r:report')?.kind).toBe('report');
+    expect(q.edges.filter(e => e.kind === 'cite').map(e => [e.from, e.to])).toEqual([['g:mara', 'c:c2'], ['r:report', 'c:c2']]);
+    // Without threads from it, the report stays off the graph.
+    expect(buildGraph({ ...quoted, links: s.links }).nodes.some(n => n.key === 'r:report')).toBe(false);
+  });
+
   it('keeps every link whose two ends are on it, under the same key as its arc on the globe', () => {
     expect(g.edges.map(e => e.key)).toEqual(['link:rel:cn|usa', 'link:ev:c1:cn:0', 'link:rp:mara:ken', 'link:rp:ken:mara', 'link:fc:ken:usa']);
   });

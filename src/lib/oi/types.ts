@@ -59,10 +59,14 @@ export interface Frame {
   focus: Located | null;
 }
 
-/** One piece of the live world the run was given: a headline, a quake, the markets. */
+/**
+ * A source the run was given: a piece of the live world (a headline, a quake,
+ * the markets), or a passage of the asker's own data (`data`: ids d1, d2…,
+ * or `data` for the whole of it when the panel reads it all).
+ */
 export interface ContextItem extends Located {
   id: string;
-  kind: 'news' | 'quake' | 'market';
+  kind: 'news' | 'quake' | 'market' | 'data';
   title: string;
   source: string;
   /** ISO time, or '' */
@@ -96,9 +100,10 @@ export interface Agent extends Located {
 
 /**
  * An arc. Node keys are prefixed by what they point at:
- * `a:` an actor, `g:` an agent, `c:` a context item.
+ * `a:` an actor, `g:` an agent, `c:` a context item, `r:report` the report.
+ * A `cite` runs from a panelist (or the report) to the source it quotes.
  */
-export type LinkKind = 'relation' | 'evidence' | 'reply' | 'focus';
+export type LinkKind = 'relation' | 'evidence' | 'reply' | 'focus' | 'cite';
 export type Tone = 'support' | 'oppose' | 'neutral';
 
 export interface Link {
@@ -120,6 +125,15 @@ export interface Reply {
   point: string;
 }
 
+/** Words a panelist quoted, and the source they came from. */
+export interface Citation {
+  /** The source's id: a feed item (c3), a passage of the asker's data (d2), or `data`. */
+  source: string;
+  quote: string;
+  /** The words were found in the source as quoted. */
+  exact: boolean;
+}
+
 /** One agent's turn in one round. */
 export interface Post {
   id: string;
@@ -137,6 +151,8 @@ export interface Post {
   changed: string;
   replies: Reply[];
   focus: string[];
+  /** What the post quotes, by source. Missing from runs made before quoting. */
+  cites?: Citation[];
 }
 
 /**
@@ -175,6 +191,8 @@ export interface Driver {
   favors: string;
   weight: number;
   actor: string | null;
+  /** The ids of the sources it rests on. */
+  sources?: string[];
 }
 
 export interface Scenario extends Located {

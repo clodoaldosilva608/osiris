@@ -6,8 +6,8 @@
 import { createElement, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import {
-  Activity, Building2, CandlestickChart, CircleUser, Crown, Eye, Factory, FileText, GitBranch, Landmark, Link2,
-  MapPin, MessageSquare, Newspaper, Signpost, TrendingUp, Users, type LucideIcon, type LucideProps,
+  Activity, Building2, CandlestickChart, CircleUser, Crown, Database, Eye, Factory, FileText, GitBranch, Landmark, Link2,
+  MapPin, MessageSquare, Newspaper, Quote, ScrollText, Signpost, TrendingUp, Users, type LucideIcon, type LucideProps,
 } from 'lucide-react';
 import { leader, outcomeColor, postView } from '@/lib/oi/forecast';
 import { mentions } from '@/lib/oi/objects';
@@ -132,8 +132,8 @@ export function ViewTag({ post, frame }: { post: Post; frame: Frame | null }) {
 const ACTOR_ICON: Record<string, LucideIcon> = {
   state: Landmark, leader: Crown, organisation: Building2, company: Factory, market: TrendingUp, group: Users, place: MapPin,
 };
-const SOURCE_ICON: Record<string, LucideIcon> = { news: Newspaper, quake: Activity, market: CandlestickChart };
-export const LINK_ICON: Record<LinkKind, LucideIcon> = { relation: Link2, evidence: FileText, reply: MessageSquare, focus: Eye };
+const SOURCE_ICON: Record<string, LucideIcon> = { news: Newspaper, quake: Activity, market: CandlestickChart, data: Database };
+export const LINK_ICON: Record<LinkKind, LucideIcon> = { relation: Link2, evidence: FileText, reply: MessageSquare, focus: Eye, cite: Quote };
 
 /** The icon for an object, from its research key's prefix and its subtype. */
 export function iconFor(key: string, subtype = ''): LucideIcon {
@@ -143,6 +143,7 @@ export function iconFor(key: string, subtype = ''): LucideIcon {
   if (prefix === 'c') return SOURCE_ICON[subtype] ?? Newspaper;
   if (prefix === 's') return GitBranch;
   if (prefix === 'p') return Signpost;
+  if (prefix === 'r') return ScrollText;
   return Link2;
 }
 
@@ -151,9 +152,10 @@ export function TypeIcon({ k, subtype, link, ...rest }: LucideProps & { k: strin
   return createElement(link ? LINK_ICON[link] : iconFor(k, subtype), rest);
 }
 
-/** The accent an object wears: gold for the world, cyan for the panel, the line's own colour for a link. */
+/** The accent an object wears: gold for the world and the report, cyan for the panel, the line's own colour for a link. */
 export function accentFor(key: string): string {
   const prefix = key.split(':')[0];
+  if (prefix === 'r') return T.goldLight;
   if (prefix === 'g' || prefix === 'p') return T.cyan;
   if (prefix === 'c') return T.body;
   return T.gold;

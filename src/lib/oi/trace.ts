@@ -74,8 +74,9 @@ function metricsFor(s: RunState, id: string): TraceMetric[] {
   const count = <T,>(xs: T[], f: (x: T) => boolean) => xs.filter(f).length;
   switch (id) {
     case 'context': {
-      const kinds = (['news', 'quake', 'market'] as const).map(k => [k, count(s.context, c => c.kind === k)] as const).filter(([, n]) => n > 0);
-      return [{ label: 'Sources', value: String(s.context.length) }, ...kinds.map(([k, n]) => ({ label: k === 'news' ? 'News' : k === 'quake' ? 'Quakes' : 'Markets', value: String(n) }))];
+      const kinds = (['news', 'quake', 'market', 'data'] as const).map(k => [k, count(s.context, c => c.kind === k)] as const).filter(([, n]) => n > 0);
+      const name = { news: 'News', quake: 'Quakes', market: 'Markets', data: 'Your data' } as const;
+      return [{ label: 'Sources', value: String(s.context.length) }, ...kinds.map(([k, n]) => ({ label: name[k], value: String(n) }))];
     }
     case 'graph': {
       const out: TraceMetric[] = [
@@ -94,8 +95,10 @@ function metricsFor(s: RunState, id: string): TraceMetric[] {
     case 'report': {
       const r = s.report;
       if (!r) return [];
+      const sourced = count(r.drivers, d => (d.sources?.length ?? 0) > 0);
       return [
         { label: 'Confidence', value: r.confidence },
+        ...(r.drivers.some(d => d.sources) ? [{ label: 'Sourced drivers', value: `${sourced} / ${r.drivers.length}` }] : []),
         { label: 'Scenarios', value: String(r.scenarios.length) },
         { label: 'Signposts', value: String(r.signposts.length) },
       ];
@@ -107,6 +110,9 @@ function metricsFor(s: RunState, id: string): TraceMetric[] {
     { label: 'Turns', value: s.agents.length ? `${posts.length} / ${s.agents.length}` : String(posts.length) },
     { label: 'Replies', value: String(posts.reduce((n, p) => n + p.replies.length, 0)) },
   ];
+  // Quotes, and how many were found word for word in their sources.
+  const cites = posts.flatMap(p => p.cites ?? []);
+  if (posts.some(p => p.cites)) out.push({ label: 'Quotes', value: cites.length ? `${cites.length} · ${count(cites, c => c.exact)} verbatim` : '0' });
   const injects = count(s.injects, x => x.round === round);
   if (injects) out.push({ label: 'Injected', value: String(injects) });
   const stat = s.rounds.find(r => r.round === round);

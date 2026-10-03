@@ -634,12 +634,12 @@ export const API_GROUPS: ApiGroup[] = [
       {
         path: '/api/oi/runs/{id}',
         method: 'GET',
-        summary: 'A run summary: phase, the panel round by round, and once written, the report with drivers, scenarios, signposts and dissent.',
+        summary: 'A run summary: phase, the panel round by round, and once written, the report with drivers, scenarios, signposts and dissent, every driver and each panelist’s latest post with the sources it quotes.',
         params: [
           { name: 'wait', desc: 'Seconds (up to 55) to wait for the run to finish before answering.', example: '30' },
           { name: 'view', desc: '`full` returns every event so far, to rebuild the whole run.', example: 'full' },
         ],
-        returns: ['id', 'status', 'phase', 'kind', 'answer', 'probability_pct', 'outcomes', 'unit', 'proposition', 'rounds', 'report', 'actors', 'panel', 'usage', 'watch_url'],
+        returns: ['id', 'status', 'phase', 'kind', 'answer', 'probability_pct', 'outcomes', 'unit', 'proposition', 'rounds', 'report', 'actors', 'panel', 'sources', 'usage', 'watch_url'],
         notes: '`kind` is `binary` (a probability of YES), `choice` (a share for each of `outcomes`) or `number` (an `estimate` with an 80% `low`–`high` range, in `unit`); `answer` says it in words either way. Anyone with the id can read a run: that is how a forecast is shared. Runs are kept for three hours after they finish.',
       },
       {

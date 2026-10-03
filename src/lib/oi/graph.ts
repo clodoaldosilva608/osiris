@@ -4,9 +4,11 @@
  * The globe puts every piece of the run where it happens, which also means
  * half of it is round the back of the planet and much of it sits on top of
  * itself in Europe. The graph lets go of geography: every actor, panelist and
- * piece of cited evidence is a node, every relation, exchange, weighing and
- * citation an edge, laid out by a small force simulation so nothing hides
- * behind anything else.
+ * cited source is a node, every relation, exchange, weighing and citation an
+ * edge, laid out by a small force simulation so nothing hides behind
+ * anything else. Every quote is a thread from the panelist to its source, and
+ * the report joins at the end with a thread to each source its drivers rest
+ * on, so a reader can follow any conclusion back to the words it came from.
  *
  * The layout starts from the map (a node is seeded where it sits on an
  * equirectangular world), so the graph's first frame reads like the globe it
@@ -16,10 +18,13 @@
 import type { RunState } from './state';
 import type { LinkKind, Tone } from './types';
 
-export type GraphNodeKind = 'actor' | 'agent' | 'evidence';
+/** The report's node: the end of every thread. */
+export const REPORT_KEY = 'r:report';
+
+export type GraphNodeKind = 'actor' | 'agent' | 'evidence' | 'report';
 
 export interface GraphNode {
-  /** The research key: `a:`, `g:` or `c:` and the id. */
+  /** The research key: `a:`, `g:` or `c:` and the id, or `r:report`. */
   key: string;
   kind: GraphNodeKind;
   /** The actor's kind or the source's (state, company, news, quake…): what its icon is drawn from. */
@@ -61,7 +66,7 @@ export interface GraphFilter {
   only?: ReadonlySet<string> | null;
 }
 
-/** The run as nodes and edges. Evidence that nothing cites stays off the graph: it would only drift. */
+/** The run as nodes and edges. A source that nothing cites stays off the graph: it would only drift. */
 export function buildGraph(s: RunState, filter: GraphFilter = {}): Graph {
   const nodes = new Map<string, GraphNode>();
   const add = (key: string, kind: GraphNodeKind, subtype: string, label: string, lat: number | null, lng: number | null) => {
@@ -72,6 +77,7 @@ export function buildGraph(s: RunState, filter: GraphFilter = {}): Graph {
   for (const a of s.agents) add(`g:${a.id}`, 'agent', 'panelist', a.name, a.lat, a.lng);
   const cited = new Set(s.links.filter(l => l.from.startsWith('c:') || l.to.startsWith('c:')).flatMap(l => [l.from, l.to]));
   for (const c of s.context) if (cited.has(`c:${c.id}`)) add(`c:${c.id}`, 'evidence', c.kind, c.title, c.lat, c.lng);
+  if (s.report && s.links.some(l => l.from === REPORT_KEY)) add(REPORT_KEY, 'report', 'report', 'Report', null, null);
 
   const edges: GraphEdge[] = [];
   const perPair = new Map<string, number>();
@@ -93,6 +99,7 @@ export function buildGraph(s: RunState, filter: GraphFilter = {}): Graph {
 
 /** Big enough to carry the node's icon; hubs a little bigger. */
 function radiusOf(n: GraphNode): number {
+  if (n.kind === 'report') return 15;
   if (n.kind === 'actor') return 12 + Math.min(6, n.degree * 0.5);
   if (n.kind === 'agent') return 11;
   return 8.5;
@@ -110,11 +117,11 @@ export interface Body {
   fy: number | null;
 }
 
-/** Force: the network finds its own shape. Flow: sources, then the world, then the panel, left to right. */
+/** Force: the network finds its own shape. Flow: sources, then the world, the panel and the report, left to right. */
 export type LayoutMode = 'force' | 'flow';
 
 /** Where each kind of node settles across in the flow layout. */
-export const FLOW_X: Record<GraphNodeKind, number> = { evidence: -260, actor: 0, agent: 260 };
+export const FLOW_X: Record<GraphNodeKind, number> = { evidence: -260, actor: 0, agent: 260, report: 470 };
 
 export interface Layout {
   bodies: Map<string, Body>;
@@ -151,9 +158,9 @@ function hash(s: string): number {
 }
 
 /** How far apart linked nodes like to sit, by what links them. */
-const DISTANCE: Record<LinkKind, number> = { relation: 150, focus: 125, reply: 115, evidence: 85 };
+const DISTANCE: Record<LinkKind, number> = { relation: 150, focus: 125, reply: 115, evidence: 85, cite: 140 };
 /** How hard each kind of node pushes the others away. */
-const CHARGE: Record<GraphNodeKind, number> = { actor: -620, agent: -420, evidence: -160 };
+const CHARGE: Record<GraphNodeKind, number> = { actor: -620, agent: -420, evidence: -160, report: -700 };
 
 export function createLayout(): Layout {
   const bodies = new Map<string, Body>();
@@ -192,6 +199,8 @@ export function createLayout(): Layout {
 
       // Links pull toward their rest length; a pair of hubs pulls more gently than a leaf on a hub.
       for (const e of g.edges) {
+        // In the flow, a quote runs across the columns by design: it is drawn, not pulled tight.
+        if (mode === 'flow' && e.kind === 'cite') continue;
         const i = index.get(e.from), j = index.get(e.to);
         if (i === undefined || j === undefined) continue;
         const a = list[i].b, b = list[j].b;

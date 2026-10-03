@@ -16,6 +16,7 @@ import type { ContextItem, Link, Post, RoundStat } from '@/lib/oi/types';
 import { FIELD, LABEL, T, ago, cyan, fit, gold, pct, smooth, toneColor } from './theme';
 import { Avatar, Empty, Mentions, SectionTitle, ViewTag } from './atoms';
 import { ReportBody } from './report';
+import { Quotes, sourceLabel } from './quotes';
 
 export type Tab = 'report' | 'debate' | 'panel' | 'world' | 'ask';
 
@@ -114,6 +115,7 @@ export function DebateList({ s, selected, onSelect }: { s: RunState; selected: s
                 <span className="ml-auto"><ViewTag post={p} frame={s.frame} /></span>
               </div>
               <p className="mt-1 text-[11.5px] leading-[1.55] text-[var(--text-secondary)]"><Mentions text={p.text} s={s} onSelect={onSelect} /></p>
+              <Quotes s={s} cites={p.cites} onSelect={onSelect} />
               {p.replies.length > 0 && (
                 <div className="mt-1.5 pl-2.5 flex flex-col gap-0.5 border-l border-[var(--border-primary)]">
                   {p.replies.map((r, j) => {
@@ -199,6 +201,8 @@ export function Legend({ floating = false, compact = false }: { floating?: boole
     { label: compact ? 'Between' : 'Between · questions', color: T.neutral },
     { label: 'Evidence', color: T.neutral, opacity: 0.55 },
     { label: 'Weighing', color: T.neutral, dash: '4 3' },
+    // Quotes are threads in the graph only; the globe does not draw them.
+    ...(floating ? [] : [{ label: 'Quote', color: T.body, dash: '0.5 3.5' }]),
   ];
   return (
     <div className={`flex flex-wrap ${floating ? 'glass-panel !rounded-full justify-center gap-x-5 gap-y-1.5 px-5 py-2.5' : 'gap-x-4 gap-y-1.5'}`}>
@@ -271,18 +275,25 @@ export function WorldList({ s, selected, onSelect }: { s: RunState; selected: st
 export function ContextList({ s, selected, onSelect }: { s: RunState; selected: string | null; onSelect: (k: string | null) => void }) {
   if (!s.context.length) return s.status === 'running' && !s.actors.length ? <Empty>Reading the live feeds.</Empty> : null;
   const cited = new Set(s.links.filter(l => l.kind === 'evidence').map(l => l.from.slice(2)));
+  // How often the panel and the report quoted each source: the most quoted first, the unquoted after.
+  const quoted = new Map<string, number>();
+  for (const l of s.links) if (l.kind === 'cite') quoted.set(l.to.slice(2), (quoted.get(l.to.slice(2)) ?? 0) + 1);
+  const order = s.context.map((c, i) => ({ c, i })).sort((a, b) => (quoted.get(b.c.id) ?? 0) - (quoted.get(a.c.id) ?? 0) || a.i - b.i).map(x => x.c);
   return (
     <div>
-      <SectionTitle count={s.context.length}>Live intelligence</SectionTitle>
-      {s.context.map((c: ContextItem) => {
+      <SectionTitle count={s.context.length}>Sources</SectionTitle>
+      {order.map((c: ContextItem) => {
         const key = `c:${c.id}`;
+        const n = quoted.get(c.id) ?? 0;
+        const used = n > 0 || cited.has(c.id);
         return (
           <Row key={c.id} on={selected === key} onClick={() => onSelect(selected === key ? null : key)}>
-            <span className="self-start mt-[6px] w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: cited.has(c.id) ? T.cyan : 'var(--text-muted)', boxShadow: cited.has(c.id) ? `0 0 6px ${cyan(0.8)}` : undefined }} />
+            <span className="self-start mt-[6px] w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: used ? T.cyan : 'var(--text-muted)', boxShadow: used ? `0 0 6px ${cyan(0.8)}` : undefined }} />
             <span className="min-w-0 flex-1">
-              <span className="block text-[11px] leading-snug text-[var(--text-primary)]">{c.title}</span>
-              <span className="block mt-0.5 text-[9px] font-mono tracking-[0.08em] truncate text-[var(--text-muted)]">{[c.source, c.place, ago(c.published)].filter(Boolean).join(' · ')}</span>
+              <span className="block text-[11px] leading-snug text-[var(--text-primary)]">{c.kind === 'data' && c.id !== 'data' ? `“${c.title}”` : c.title}</span>
+              <span className="block mt-0.5 text-[9px] font-mono tracking-[0.08em] truncate text-[var(--text-muted)]">{[`[${c.id}]`, sourceLabel(c, c.id), c.place, ago(c.published)].filter(Boolean).join(' · ')}</span>
             </span>
+            {n > 0 && <span className="self-start mt-px text-[9px] font-mono tabular-nums whitespace-nowrap" style={{ color: T.cyan }} title={`Quoted ${n} time${n === 1 ? '' : 's'}`}>{n}×</span>}
           </Row>
         );
       })}

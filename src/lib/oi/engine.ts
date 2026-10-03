@@ -26,6 +26,7 @@ import {
   SYSTEM, agentsPrompt, askAgentPrompt, askReportPrompt, feedBlock, reportPrompt, turnPrompt, worldBrief, worldPrompt,
 } from './prompts';
 import { ProviderError, type ChatFn, type ChatRequest } from './providers';
+import { dataExcerpts, sourceTexts, wholeData } from './sources';
 import type { RunState } from './state';
 import type { Agent, ContextItem, Depth, Link, OiEvent, Post, RoundStat, Usage } from './types';
 
@@ -153,17 +154,22 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
   const context = input.useFeeds ? await gather(input.question, input.seed, depth.feed).catch(() => []) : [];
   s.check();
   s.emit({ t: 'context', items: context });
-  const evidence = feedBlock(context);
   // With the whole panel reading it, every turn and the report quote the head of the asker's data.
-  const data = input.seedScope === 'panel' ? input.seed.slice(0, PANEL_SEED_MAX) : undefined;
+  const data = input.seedScope === 'panel' && input.seed.trim() ? input.seed.slice(0, PANEL_SEED_MAX) : undefined;
 
   // 2. World model
   s.emit({ t: 'phase', phase: 'graph', label: 'Mapping actors and relations' });
-  const world = parseWorld(
-    await s.json({ user: worldPrompt(input.question, input.seed, context, today), maxTokens: 3500, temperature: 0.4, timeoutMs: 150_000 }),
-    input.question, context,
-  );
+  const worldRaw = await s.json({ user: worldPrompt(input.question, input.seed, context, today), maxTokens: 3500, temperature: 0.4, timeoutMs: 150_000 });
+  // The passages it lifted from the asker's data become sources of their own, d1, d2…, for the panel to quote.
+  const passages = dataExcerpts(worldRaw.quotes, input.seed);
+  const world = parseWorld(worldRaw, input.question, [...context, ...passages]);
   if (world.actors.length < 2) throw new Error('The model did not return a usable world model. Try again, or pick a stronger model.');
+  const sources = [...context, ...passages, ...(data ? [wholeData(input.seed)] : [])];
+  if (sources.length > context.length) s.emit({ t: 'context', items: sources });
+  const evidence = feedBlock(sources);
+  // What each source says, to hold every quote to.
+  const texts = sourceTexts(sources, data);
+  const citable = texts.size > 0;
   s.emit({ t: 'frame', frame: world.frame });
   for (const actor of world.actors) s.emit({ t: 'actor', actor });
   for (const link of world.links) s.emit({ t: 'link', link });
@@ -205,29 +211,36 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
       const own = posts.filter(p => p.agent === agent.id);
       const mentions = prev.flatMap(p => p.replies.filter(r => r.to === agent.id).map(reply => ({ from: byId.get(p.agent)!, reply })));
       try {
-        const raw = await s.json({
-          user: turnPrompt({
-            frame, agent, round, rounds: depth.rounds, brief, evidence, data, own, mentions,
-            panel: panelFor(agent, prev, byId), injects: injected, today,
-          }),
-          maxTokens: 1200,
-          // Different temperaments, a little differently random.
-          temperature: 0.7 + (i % 4) * 0.1,
+        const user = turnPrompt({
+          frame, agent, round, rounds: depth.rounds, brief, evidence, data, citable, own, mentions,
+          panel: panelFor(agent, prev, byId), injects: injected, today,
         });
+        // Different temperaments, a little differently random.
+        const ask = (u: string) => s.json({ user: u, maxTokens: 1200, temperature: 0.7 + (i % 4) * 0.1 });
         const last = own.at(-1);
-        const post = parsePost(raw, agent, round, agentIds, actorIds, {
+        const fallback = {
           probability: last?.probability ?? agent.prior,
           shares: last?.shares ?? (frame.kind === 'choice' ? frame.prior : undefined),
           estimate: last?.estimate ?? (frame.anchor !== null ? { value: frame.anchor, low: frame.anchor, high: frame.anchor } : undefined),
-        }, frame);
+        };
+        let post = parsePost(await ask(user), agent, round, agentIds, actorIds, fallback, frame, texts);
+        // Every post is to quote a source. One that quotes none is sent back once.
+        if (citable && !post.cites?.length) {
+          const again = await ask(`${user}\n\nYour reply quoted no source. Reply again with the same JSON, and in "cites" quote at least one source by its id, word for word.`).catch(() => null);
+          if (again) post = parsePost(again, agent, round, agentIds, actorIds, fallback, frame, texts);
+        }
         s.emit({ t: 'post', post });
         for (const r of post.replies) {
           s.emit({ t: 'link', link: { id: `rp:${agent.id}:${r.to}`, from: `g:${agent.id}`, to: `g:${r.to}`, kind: 'reply', tone: replyTone(r.stance), strength: post.confidence, label: r.point, round } });
         }
+        // On a yes/no question, an arc to the actor a panelist is weighing, or a quote they use, says which way they lean.
+        const tone = frame.kind !== 'binary' ? 'neutral' : post.probability >= 0.55 ? 'support' : post.probability <= 0.45 ? 'oppose' : 'neutral';
         for (const f of post.focus) {
-          // On a yes/no question, an arc to the actor a panelist is weighing says which way they lean.
-          const tone = frame.kind !== 'binary' ? 'neutral' : post.probability >= 0.55 ? 'support' : post.probability <= 0.45 ? 'oppose' : 'neutral';
           s.emit({ t: 'link', link: { id: `fc:${agent.id}:${f}`, from: `g:${agent.id}`, to: `a:${f}`, kind: 'focus', tone, strength: post.confidence, label: 'weighing', round } });
+        }
+        // Each quote, a thread from the panelist to its source.
+        for (const c of post.cites ?? []) {
+          s.emit({ t: 'link', link: { id: `qt:${agent.id}:${c.source}:${round}`, from: `g:${agent.id}`, to: `c:${c.source}`, kind: 'cite', tone, strength: post.confidence, label: c.quote, round } });
         }
         return post;
       } catch (err) {
@@ -264,10 +277,16 @@ export async function runEngine(input: EngineInput, deps: EngineDeps): Promise<v
     estimate: last.value ? { value: last.value.median, low: last.value.low, high: last.value.high } : undefined,
   };
   const report = parseReport(
-    await s.json({ user: reportPrompt({ frame, brief, rounds: stats, finals, injects: injected, evidence, data, today }), maxTokens: 3000, temperature: 0.3, timeoutMs: 150_000 }),
-    swarm, actorIds, frame,
+    await s.json({ user: reportPrompt({ frame, brief, rounds: stats, finals, injects: injected, evidence, data, citable, today }), maxTokens: 3000, temperature: 0.3, timeoutMs: 150_000 }),
+    swarm, actorIds, frame, new Set(texts.keys()),
   );
   s.emit({ t: 'report', report });
+  // The report's own threads: each driver to the sources it rests on.
+  report.drivers.forEach((d, i) => {
+    for (const src of d.sources ?? []) {
+      s.emit({ t: 'link', link: { id: `rq:${i}:${src}`, from: 'r:report', to: `c:${src}`, kind: 'cite', tone: d.push === 'yes' ? 'support' : 'oppose', strength: d.weight, label: d.text, round: depth.rounds } });
+    }
+  });
   s.emitUsage();
 }
 

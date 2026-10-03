@@ -8,6 +8,7 @@
  */
 import { centroidFor } from '@/lib/countryCentroids';
 import { amount, answerText, normalizeShares, orderEstimate, uniform } from './forecast';
+import { parseCites, sourceIds } from './sources';
 import type {
   Actor, ActorKind, Agent, ContextItem, Driver, Estimate, Frame, Link, Located, Post, Reply, Report, Scenario, Signpost, Tone,
 } from './types';
@@ -292,6 +293,8 @@ export interface PostFallback {
 export function parsePost(
   raw: Record<string, unknown>, agent: Agent, round: number, agentIds: Set<string>, actorIds: Set<string>,
   fallback: PostFallback, frame?: Pick<Frame, 'kind' | 'outcomes'>,
+  /** What each citable source says, to check the post's quotes against. */
+  sources?: Map<string, string>,
 ): Post {
   const replies: Reply[] = [];
   for (const r of list(raw.replies, 3)) {
@@ -326,6 +329,7 @@ export function parsePost(
     changed: text(raw.changed, 200),
     replies,
     focus: list(raw.focus, 3).map(f => slug(f, '')).filter(f => actorIds.has(f)),
+    cites: sources ? parseCites(raw.cites ?? raw.citations ?? raw.quotes, sources) : [],
   };
 }
 
@@ -354,6 +358,8 @@ export function parseReport(
   swarm: { probability: number; shares?: number[]; estimate?: Estimate },
   actorIds: Set<string>,
   frame?: Pick<Frame, 'kind' | 'outcomes' | 'unit'>,
+  /** The ids a driver may cite. */
+  sources?: Set<string>,
 ): Report {
   const outcomes = frame?.kind === 'choice' ? frame.outcomes : [];
   const drivers: Driver[] = list(raw.drivers, 6).map(d => {
@@ -365,6 +371,7 @@ export function parseReport(
       favors: favored(o.favors ?? o.push, outcomes),
       weight: num(o.weight, 0, 1, 0.5),
       actor: actorIds.has(actor) ? actor : null,
+      ...(sources ? { sources: sourceIds(o.sources ?? o.source, sources) } : {}),
     };
   }).filter(d => d.text);
 

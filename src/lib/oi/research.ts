@@ -6,11 +6,11 @@
  *
  * Keys: "link:<link id>" for an arc; "a:<actor>", "g:<panelist>", "c:<item>"
  * for nodes; "s:<index>" and "p:<index>" for the report's scenarios and
- * signposts.
+ * signposts; "r:report" for the report itself, where every thread ends.
  */
 import { postView } from './forecast';
 import type { RunState } from './state';
-import type { Actor, Agent, ContextItem, Link, Post, Scenario, Signpost } from './types';
+import type { Actor, Agent, ContextItem, Link, Post, Report, Scenario, Signpost } from './types';
 
 export type Selection =
   | { type: 'link'; key: string; link: Link }
@@ -18,7 +18,8 @@ export type Selection =
   | { type: 'agent'; key: string; agent: Agent }
   | { type: 'context'; key: string; item: ContextItem }
   | { type: 'scenario'; key: string; scenario: Scenario; index: number }
-  | { type: 'signpost'; key: string; signpost: Signpost; index: number };
+  | { type: 'signpost'; key: string; signpost: Signpost; index: number }
+  | { type: 'report'; key: string; report: Report };
 
 export function resolve(s: RunState, key: string | null): Selection | null {
   if (!key) return null;
@@ -33,6 +34,7 @@ export function resolve(s: RunState, key: string | null): Selection | null {
   if (prefix === 'c') { const item = s.context.find(c => c.id === id); return item ? { type: 'context', key, item } : null; }
   if (prefix === 's' && s.report) { const i = Number(id); const scenario = s.report.scenarios[i]; return scenario ? { type: 'scenario', key, scenario, index: i } : null; }
   if (prefix === 'p' && s.report) { const i = Number(id); const signpost = s.report.signposts[i]; return signpost ? { type: 'signpost', key, signpost, index: i } : null; }
+  if (prefix === 'r' && s.report) return { type: 'report', key, report: s.report };
   return null;
 }
 
@@ -52,12 +54,14 @@ export function nodeName(s: RunState, nodeKey: string): string {
   if (prefix === 'a') return s.actors.find(a => a.id === id)?.name ?? id;
   if (prefix === 'g') return s.agents.find(a => a.id === id)?.name ?? id;
   if (prefix === 'c') return s.context.find(c => c.id === id)?.title ?? id;
+  if (prefix === 'r') return 'The report';
   return id;
 }
 
-/** The post a link was drawn from: a reply or a focus arc belongs to its panelist's turn in that round. */
+/** The post a link was drawn from: a reply, a focus arc or a quote belongs to its panelist's turn in that round. */
 export function postFor(s: RunState, link: Link): Post | undefined {
-  if (link.kind !== 'reply' && link.kind !== 'focus') return undefined;
+  if (link.kind !== 'reply' && link.kind !== 'focus' && link.kind !== 'cite') return undefined;
+  if (!link.from.startsWith('g:')) return undefined;
   const agent = link.from.slice(2);
   const posts = s.posts.filter(p => p.agent === agent);
   return posts.find(p => p.round === link.round) ?? posts[posts.length - 1];
@@ -84,6 +88,11 @@ export function brief(s: RunState, key: string): { title: string; detail: string
         return { title: clip(from, 80), detail: `${effect}: ${to}` };
       }
       if (l.kind === 'reply') return { title: `${from} ${STANCE_WORD[l.tone]} ${to}`, detail: `Round ${l.round}${l.label ? ` · “${clip(l.label, 80)}”` : ''}` };
+      if (l.kind === 'cite') {
+        return l.from === 'r:report'
+          ? { title: `The report rests on ${clip(to, 60)}`, detail: clip(l.label, 100) }
+          : { title: `${from} quotes ${clip(to, 60)}`, detail: `Round ${l.round} · “${clip(l.label, 90)}”` };
+      }
       const post = postFor(s, l);
       return { title: `${from} weighing ${to}`, detail: post ? `Round ${post.round} · ${postView(post, s.frame)}` : 'watching' };
     }
@@ -96,5 +105,6 @@ export function brief(s: RunState, key: string): { title: string; detail: string
     case 'context': return { title: clip(sel.item.title, 90), detail: [sel.item.source, sel.item.place].filter(Boolean).join(' · ') };
     case 'scenario': return { title: `Scenario: ${sel.scenario.name}`, detail: `${Math.round(sel.scenario.probability * 100)}% · ${clip(sel.scenario.description, 70)}` };
     case 'signpost': return { title: 'Signpost', detail: clip(sel.signpost.text, 90) };
+    case 'report': return { title: 'The report', detail: `${sel.report.answer} · ${clip(sel.report.headline, 80)}` };
   }
 }
