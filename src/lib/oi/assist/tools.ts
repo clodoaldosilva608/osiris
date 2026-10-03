@@ -33,7 +33,13 @@ export interface Site {
   setView(v: { projection?: 'globe' | 'mercator'; style?: 'dark' | 'satellite' }): void;
   geocode(query: string): Promise<Place | null>;
   forecast(question: string, depth: Depth): Promise<{ ok: true; id: string } | { ok: false; error: string }>;
+  /** Open or close the full-screen workspace, and set what its stage shows. */
+  workspace?(o: { open?: boolean; view?: WorkspaceView }): { ok: true; summary: string } | { ok: false; error: string };
+  /** Open an object of the current forecast by name. */
+  select?(name: string): { ok: true; summary: string } | { ok: false; error: string };
 }
+
+export type WorkspaceView = 'globe' | 'graph' | 'timeline' | 'table';
 
 /** Something for the reader to look at in the conversation. */
 export interface Card {
@@ -299,6 +305,23 @@ export async function runCall(call: Call, site: Site, signal?: AbortSignal): Pro
       const started = await site.forecast(question, depth);
       if (!started.ok) return fail('forecast', started.error);
       return ok('forecast', `Started a ${depth} forecast (run ${started.id.slice(0, 8)})`, undefined, { kind: 'forecast', title: question, items: [], runId: started.id });
+    }
+
+    case 'workspace': {
+      if (!site.workspace) return fail('workspace', 'The workspace is not available here');
+      const view = a.view === 'globe' || a.view === 'graph' || a.view === 'timeline' || a.view === 'table' ? a.view : undefined;
+      const open = a.open === false || a.open === 'false' ? false : a.open === true || a.open === 'true' || view ? true : undefined;
+      if (open === undefined && !view) return fail('workspace', 'Say open (true or false) or a view');
+      const out = site.workspace({ open, view });
+      return out.ok ? ok('workspace', out.summary) : fail('workspace', out.error);
+    }
+
+    case 'select': {
+      if (!site.select) return fail('select', 'There is nothing to select here');
+      const name = str(a.name, 120);
+      if (!name) return fail('select', 'Give the name of the object to open');
+      const out = site.select(name);
+      return out.ok ? ok('select', out.summary) : fail('select', out.error);
     }
 
     case 'clear':

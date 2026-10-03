@@ -2,26 +2,33 @@
 /**
  * OSIRIS OI: the workspace.
  *
- * Full screen, the run gets a workspace in the manner of an analysis
- * platform: a top bar with the run, its progress, the stage switch and an
- * object search; on the left the assessment (the verdict, then the report or
- * the execution trace); on the right whatever object is selected, or the
- * lists when nothing is; and in the middle the stage: the live globe, the
- * research graph, the timeline of the debate, or the object tables.
+ * Full screen, OI becomes a command centre in the manner of an analysis
+ * platform, with or without a forecast:
  *
- * Keys: 1–4 switch the stage, Ctrl+K (⌘K) or / searches, Esc closes the
- * selected object and then the workspace.
+ *   - the top bar: the run (or OI itself), its progress, the stage switch,
+ *     the object search, the engine, and the run's controls;
+ *   - on the left, the command column, with the same Forecast / Assist switch
+ *     as the docked panel. Forecast is the ask form until there is a run, then
+ *     the verdict with the report or the execution trace; Assist is the
+ *     conversation, and OI can drive this whole workspace from it;
+ *   - in the middle, the stage: the live globe, or for a run its research
+ *     graph, the timeline of the debate, or the object tables;
+ *   - on the right, once there is a run, whatever object is selected, or the
+ *     debate, the panel, the world model and the Q&A.
+ *
+ * Keys: 1–4 switch the stage, Ctrl+K (⌘K) or / searches the run, Esc closes
+ * the selected object and then the workspace.
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Check, Copy, GanttChart, Globe2, Minimize2, Network, Table2 } from 'lucide-react';
+import { Check, Copy, GanttChart, Globe2, MessageSquare, Minimize2, Network, Orbit, Plus, Table2 } from 'lucide-react';
 import type { OiClient } from '@/lib/oi/client';
 import { workspaceLayout } from '@/lib/oi/layout';
 import { resolve } from '@/lib/oi/research';
 import type { RunState } from '@/lib/oi/state';
 import { progressOf, traceOf } from '@/lib/oi/trace';
 import ErrorBoundary from '@/components/ErrorBoundary';
-import { KIND_LABEL, SOLID, T, gold } from './theme';
+import { KIND_LABEL, LABEL, SOLID, T, gold } from './theme';
 import { IconButton, OiMark, Segmented, TextButton } from './atoms';
 import { Controls, InjectBox, UsageLine, Verdict } from './run';
 import { ReportBody } from './report';
@@ -34,10 +41,12 @@ import { TableView } from './TableView';
 import { ObjectSearch, type ObjectSearchHandle } from './ObjectSearch';
 
 export type Stage = 'globe' | 'graph' | 'timeline' | 'table';
-const STAGES: Stage[] = ['globe', 'graph', 'timeline', 'table'];
+export const STAGES: Stage[] = ['globe', 'graph', 'timeline', 'table'];
+export type WorkspaceMode = 'forecast' | 'assist';
 
 export interface WorkspaceProps {
-  s: RunState;
+  /** The forecast, or null before there is one. */
+  s: RunState | null;
   oi: OiClient;
   selected: string | null;
   onSelect: (key: string | null) => void;
@@ -48,9 +57,24 @@ export interface WorkspaceProps {
   onFocus?: () => void;
   following?: boolean;
   onFollow?: () => void;
-  /** The debate, panel, world and ask lists, built by the panel so they share its tab state. */
+  /** Forecast or Assist, shared with the docked panel. */
+  mode: WorkspaceMode;
+  onMode: (m: WorkspaceMode) => void;
+  /** What the stage shows, which OI can change from the conversation. */
+  stage: Stage;
+  onStage: (s: Stage) => void;
+  /** The debate, panel, world and Q&A lists for a run, built by the panel so they share its tab state. */
   lists: ReactNode;
   errorBox: ReactNode;
+  /** The conversation. */
+  assistView: ReactNode;
+  /** The ask form and past forecasts, for before there is a run. */
+  askView: ReactNode;
+  /** The engine pill, with its sheet. */
+  engineMenu: ReactNode;
+  onNewForecast: () => void;
+  /** Whether OI is in the middle of a reply, for the mark in the top bar. */
+  assistBusy?: boolean;
 }
 
 function useWindowWidth(): number {
@@ -63,24 +87,33 @@ function useWindowWidth(): number {
   return w;
 }
 
+const STAGE_OPTIONS = (hasRun: boolean) => [
+  { value: 'globe' as Stage, label: 'Globe', icon: <Globe2 className="w-3 h-3" />, title: 'The live globe (1)' },
+  { value: 'graph' as Stage, label: 'Graph', icon: <Network className="w-3 h-3" />, title: hasRun ? 'The research graph (2)' : 'Run a forecast to see its graph', disabled: !hasRun },
+  { value: 'timeline' as Stage, label: 'Timeline', icon: <GanttChart className="w-3 h-3" />, title: hasRun ? 'The debate over time (3)' : 'Run a forecast to see its timeline', disabled: !hasRun },
+  { value: 'table' as Stage, label: 'Table', icon: <Table2 className="w-3 h-3" />, title: hasRun ? 'Every object in tables (4)' : 'Run a forecast to see its objects', disabled: !hasRun },
+];
+
 export function Workspace(p: WorkspaceProps) {
-  const { s, oi, selected, onSelect } = p;
-  const [stage, setStage] = useState<Stage>('globe');
+  const { s, oi, selected, onSelect, stage, onStage } = p;
   const [leftTab, setLeftTab] = useState<'assessment' | 'trace' | null>(null);
   const [copied, setCopied] = useState(false);
   const search = useRef<ObjectSearchHandle>(null);
   const L = workspaceLayout(useWindowWidth());
-  const selection = resolve(s, selected);
-  const progress = useMemo(() => progressOf(traceOf(s)), [s]);
+  const selection = s ? resolve(s, selected) : null;
+  const progress = useMemo(() => (s ? progressOf(traceOf(s)) : 0), [s]);
   // Until someone picks: the trace while the run works, the assessment once there is a report.
-  const left = leftTab ?? (s.report ? 'assessment' : 'trace');
+  const left = leftTab ?? (s?.report ? 'assessment' : 'trace');
+  // Without a run the graph, timeline and tables have nothing to show: the stage is the globe.
+  const shown: Stage = s ? stage : 'globe';
 
   const { onTheater } = p;
+  const hasRun = Boolean(s);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       const typing = Boolean(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable));
-      if ((e.key.toLowerCase() === 'k' && (e.ctrlKey || e.metaKey)) || (e.key === '/' && !typing)) {
+      if (hasRun && ((e.key.toLowerCase() === 'k' && (e.ctrlKey || e.metaKey)) || (e.key === '/' && !typing))) {
         e.preventDefault();
         search.current?.focus();
         return;
@@ -92,11 +125,11 @@ export function Workspace(p: WorkspaceProps) {
         return;
       }
       const n = Number(e.key);
-      if (n >= 1 && n <= STAGES.length) setStage(STAGES[n - 1]);
+      if (n >= 1 && n <= STAGES.length && (hasRun || n === 1)) onStage(STAGES[n - 1]);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selected, onSelect, onTheater]);
+  }, [selected, onSelect, onTheater, onStage, hasRun]);
 
   const share = async () => {
     try {
@@ -106,7 +139,8 @@ export function Workspace(p: WorkspaceProps) {
     } catch { /* clipboard blocked */ }
   };
 
-  const stageBox = { left: L.left + L.gap * 2, right: L.right + L.gap * 2, top: L.top, bottom: L.gap };
+  const right = s ? L.right + L.gap * 2 : L.gap;
+  const stageBox = { left: L.left + L.gap * 2, right, top: L.top, bottom: L.gap };
 
   return (
     <div className="fixed inset-0 z-[900] pointer-events-none" role="dialog" aria-label="OI workspace">
@@ -116,85 +150,120 @@ export function Workspace(p: WorkspaceProps) {
       {/* ── Top bar ── */}
       <header className="glass-panel absolute pointer-events-auto flex items-center gap-3 px-3" style={{ left: L.gap, right: L.gap, top: L.gap, height: 56 }}>
         <div className="flex items-center gap-2 flex-shrink-0 pl-1">
-          <OiMark size={18} live={s.status === 'running'} />
+          <OiMark size={18} live={s?.status === 'running' || p.assistBusy} />
           <span className="hud-text text-[12px] text-[var(--text-primary)]">OI</span>
         </div>
         <span className="w-px h-7 bg-[var(--border-secondary)]" />
         <div className="min-w-0 flex-1">
-          <p className="text-[12.5px] font-semibold truncate text-[var(--text-heading)]" title={s.question}>{s.question}</p>
-          <div className="mt-0.5 flex items-center gap-2 text-[9px] font-mono tracking-[0.12em] uppercase text-[var(--text-muted)] min-w-0">
-            {oi.runId && <span className="flex-shrink-0">Run {oi.runId.slice(0, 6)}</span>}
-            {s.frame && <span className="flex-shrink-0 text-[var(--cyan-primary)]">{KIND_LABEL[s.frame.kind]}</span>}
-            <span className="flex items-center gap-1.5 min-w-0">
-              <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${s.status === 'running' ? 'animate-osiris-pulse' : ''}`}
-                style={{ background: s.status === 'running' ? T.green : s.status === 'done' ? T.gold : s.status === 'failed' ? T.red : T.mute }} />
-              <span className="truncate normal-case tracking-[0.04em] text-[var(--text-secondary)]">{s.status === 'running' ? s.phaseLabel : s.status === 'done' ? 'Forecast complete' : s.status === 'failed' ? (s.message || 'Failed') : 'Stopped'}</span>
-            </span>
-          </div>
+          {s ? (
+            <>
+              <p className="text-[12.5px] font-semibold truncate text-[var(--text-heading)]" title={s.question}>{s.question}</p>
+              <div className="mt-0.5 flex items-center gap-2 text-[9px] font-mono tracking-[0.12em] uppercase text-[var(--text-muted)] min-w-0">
+                {oi.runId && <span className="flex-shrink-0">Run {oi.runId.slice(0, 6)}</span>}
+                {s.frame && <span className="flex-shrink-0 text-[var(--cyan-primary)]">{KIND_LABEL[s.frame.kind]}</span>}
+                <span className="flex items-center gap-1.5 min-w-0">
+                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${s.status === 'running' ? 'animate-osiris-pulse' : ''}`}
+                    style={{ background: s.status === 'running' ? T.green : s.status === 'done' ? T.gold : s.status === 'failed' ? T.red : T.mute }} />
+                  <span className="truncate normal-case tracking-[0.04em] text-[var(--text-secondary)]">{s.status === 'running' ? s.phaseLabel : s.status === 'done' ? 'Forecast complete' : s.status === 'failed' ? (s.message || 'Failed') : 'Stopped'}</span>
+                </span>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-[12.5px] font-semibold truncate text-[var(--text-heading)]">OI command</p>
+              <p className="mt-0.5 text-[9px] font-mono tracking-[0.12em] uppercase text-[var(--text-muted)] truncate">No forecast yet · run one, or ask OI to work the map</p>
+            </>
+          )}
         </div>
         <div className="flex-shrink-0" style={{ width: 'min(400px, 30vw)' }}>
-          <Segmented id="stage" value={stage} onChange={setStage} options={[
-            { value: 'globe', label: 'Globe', icon: <Globe2 className="w-3 h-3" />, title: 'The live globe (1)' },
-            { value: 'graph', label: 'Graph', icon: <Network className="w-3 h-3" />, title: 'The research graph (2)' },
-            { value: 'timeline', label: 'Timeline', icon: <GanttChart className="w-3 h-3" />, title: 'The debate over time (3)' },
-            { value: 'table', label: 'Table', icon: <Table2 className="w-3 h-3" />, title: 'Every object in tables (4)' },
-          ]} />
+          <Segmented id="stage" value={shown} onChange={onStage} options={STAGE_OPTIONS(hasRun)} />
         </div>
-        <div className="flex-shrink-0 w-[210px]"><ObjectSearch ref={search} s={s} onPick={k => onSelect(k)} /></div>
+        {s && <div className="flex-shrink-0 w-[200px]"><ObjectSearch ref={search} s={s} onPick={k => onSelect(k)} /></div>}
         <div className="flex items-center gap-0.5 flex-shrink-0">
-          <Controls s={s} oi={oi} focus={p.focus} onFocus={p.onFocus} following={p.following} onFollow={p.onFollow} />
-          <TextButton onClick={share} title="Copy a link that replays this run">{copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />} Link</TextButton>
+          {p.engineMenu}
+          {s && <Controls s={s} oi={oi} focus={p.focus} onFocus={p.onFocus} following={p.following} onFollow={p.onFollow} />}
+          {s && <TextButton onClick={share} title="Copy a link that replays this run">{copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />} Link</TextButton>}
+          {s && <IconButton title="New forecast" onClick={p.onNewForecast}><Plus className="w-3.5 h-3.5" /></IconButton>}
           <IconButton title="Leave full screen (Esc)" onClick={() => onTheater?.(false)}><Minimize2 className="w-3.5 h-3.5" /></IconButton>
         </div>
-        <span className="absolute left-3 right-3 bottom-0 h-px bg-[var(--border-secondary)] overflow-hidden" aria-hidden>
-          <span className="block h-full transition-[width] duration-700" style={{ width: `${progress * 100}%`, background: T.gold, boxShadow: `0 0 8px ${gold(0.8)}` }} />
-        </span>
+        {s && (
+          <span className="absolute left-3 right-3 bottom-0 h-px bg-[var(--border-secondary)] overflow-hidden" aria-hidden>
+            <span className="block h-full transition-[width] duration-700" style={{ width: `${progress * 100}%`, background: T.gold, boxShadow: `0 0 8px ${gold(0.8)}` }} />
+          </span>
+        )}
       </header>
 
-      {/* ── Left: the assessment ── */}
-      <aside className="glass-panel absolute pointer-events-auto flex flex-col overflow-hidden" style={{ left: L.gap, top: L.top, bottom: L.gap, width: L.left }} aria-label="Assessment">
-        <div className="px-4 pt-4 pb-4 border-b border-[var(--border-secondary)] flex flex-col gap-3">
-          <Verdict key={oi.runId ?? ''} s={s} large />
-          {s.status === 'running' && oi.canSteer && <InjectBox oi={oi} s={s} />}
-        </div>
-        {p.errorBox}
-        <div className="px-3 pt-3">
-          <Segmented id="left" size="sm" value={left} onChange={setLeftTab} options={[
-            { value: 'assessment', label: s.report ? 'Report' : 'Sources' },
-            { value: 'trace', label: 'Trace' },
+      {/* ── Left: the command column ── */}
+      <aside className="glass-panel absolute pointer-events-auto flex flex-col overflow-hidden" style={{ left: L.gap, top: L.top, bottom: L.gap, width: L.left }} aria-label={p.mode === 'assist' ? 'OI Assist' : 'Forecast'}>
+        <div className="px-3 pt-3 pb-2.5 border-b border-[var(--border-secondary)] flex-shrink-0">
+          <Segmented id="ws-mode" size="sm" value={p.mode} onChange={p.onMode} options={[
+            { value: 'forecast', label: s?.status === 'running' ? 'Forecast ●' : 'Forecast', icon: <Orbit className="w-3 h-3" />, title: 'The forecasting swarm' },
+            { value: 'assist', label: 'Assist', icon: <MessageSquare className="w-3 h-3" />, title: 'Talk to OI: it works the map and this workspace for you' },
           ]} />
         </div>
-        <div className="flex-1 min-h-0 overflow-y-auto styled-scrollbar p-4">
-          {left === 'trace' ? <TraceView s={s} />
-            : s.report ? <ReportBody s={s} runId={oi.runId} selected={selected} onSelect={onSelect} />
-              : <ContextList s={s} selected={selected} onSelect={onSelect} />}
-        </div>
-        <UsageLine s={s} />
+        {p.mode === 'assist' ? (
+          <div className="flex-1 min-h-0 overflow-y-auto styled-scrollbar">{p.assistView}</div>
+        ) : s ? (
+          <>
+            <div className="px-4 pt-4 pb-4 border-b border-[var(--border-secondary)] flex flex-col gap-3 flex-shrink-0">
+              <Verdict key={oi.runId ?? ''} s={s} large />
+              {s.status === 'running' && oi.canSteer && <InjectBox oi={oi} s={s} />}
+            </div>
+            {p.errorBox}
+            <div className="px-3 pt-3 flex-shrink-0">
+              <Segmented id="left" size="sm" value={left} onChange={setLeftTab} options={[
+                { value: 'assessment', label: s.report ? 'Report' : 'Sources' },
+                { value: 'trace', label: 'Trace' },
+              ]} />
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto styled-scrollbar p-4">
+              {left === 'trace' ? <TraceView s={s} />
+                : s.report ? <ReportBody s={s} runId={oi.runId} selected={selected} onSelect={onSelect} />
+                  : <ContextList s={s} selected={selected} onSelect={onSelect} />}
+            </div>
+            <UsageLine s={s} />
+          </>
+        ) : (
+          <div className="flex-1 min-h-0 overflow-y-auto styled-scrollbar">
+            {p.errorBox}
+            {p.askView}
+          </div>
+        )}
       </aside>
 
-      {/* ── Right: the selected object, or the lists ── */}
-      <aside className="glass-panel absolute pointer-events-auto flex flex-col overflow-hidden" style={{ right: L.gap, top: L.top, bottom: L.gap, width: L.right }} aria-label={selection ? 'Object' : 'Lists'}>
-        {selection
-          ? <ObjectView key={selection.key} s={s} sel={selection} onSelect={onSelect} onLocate={p.onLocate} onAsk={p.onAsk} onGraph={() => setStage('graph')} variant="panel" onBack={() => onSelect(null)} />
-          : p.lists}
-      </aside>
+      {/* ── Right: the selected object, or the run's lists ── */}
+      {s && (
+        <aside className="glass-panel absolute pointer-events-auto flex flex-col overflow-hidden" style={{ right: L.gap, top: L.top, bottom: L.gap, width: L.right }} aria-label={selection ? 'Object' : 'Lists'}>
+          {selection
+            ? <ObjectView key={selection.key} s={s} sel={selection} onSelect={onSelect} onLocate={p.onLocate} onAsk={p.onAsk} onGraph={() => onStage('graph')} variant="panel" onBack={() => onSelect(null)} />
+            : p.lists}
+        </aside>
+      )}
 
       {/* ── The stage ── */}
       <AnimatePresence>
-        {stage !== 'globe' && (
-          <motion.div key={stage} initial={{ opacity: 0, scale: 0.985 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.985 }} transition={{ duration: 0.2 }}
+        {s && shown !== 'globe' && (
+          <motion.div key={shown} initial={{ opacity: 0, scale: 0.985 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.985 }} transition={{ duration: 0.2 }}
             className="glass-panel absolute pointer-events-auto overflow-hidden" style={{ ...stageBox, background: SOLID }}>
-            <ErrorBoundary name={`OI ${stage}`}>
-              {stage === 'graph' && <GraphView s={s} selected={selected} onSelect={onSelect} />}
-              {stage === 'timeline' && <TimelineView s={s} selected={selected} onSelect={onSelect} />}
-              {stage === 'table' && <TableView s={s} selected={selected} onSelect={onSelect} />}
+            <ErrorBoundary name={`OI ${shown}`}>
+              {shown === 'graph' && <GraphView s={s} selected={selected} onSelect={onSelect} />}
+              {shown === 'timeline' && <TimelineView s={s} selected={selected} onSelect={onSelect} />}
+              {shown === 'table' && <TableView s={s} selected={selected} onSelect={onSelect} />}
             </ErrorBoundary>
           </motion.div>
         )}
       </AnimatePresence>
-      {stage === 'globe' && (
+      {shown === 'globe' && (
         <div className="absolute flex justify-center pointer-events-none" style={{ left: stageBox.left, right: stageBox.right, bottom: L.gap + 12 }}>
-          <div className="pointer-events-auto"><Legend floating compact /></div>
+          {s ? (
+            <div className="pointer-events-auto"><Legend floating compact /></div>
+          ) : (
+            <div className="glass-panel !rounded-full px-5 py-2.5 flex items-center gap-3 pointer-events-auto">
+              <span className={`${LABEL} !text-[8.5px] text-[var(--text-secondary)]`}>Live globe</span>
+              <span className="w-px h-3 bg-[var(--border-secondary)]" />
+              <span className="text-[10.5px] text-[var(--text-muted)]">Run a forecast to draw its analysis here, or ask OI to take you somewhere</span>
+            </div>
+          )}
         </div>
       )}
     </div>

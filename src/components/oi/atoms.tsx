@@ -53,15 +53,15 @@ export function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boo
 
 /** Choices in a row with a sliding highlight, the same control as the map's 3D / 2D switch. */
 export function Segmented<V extends string>({ id, options, value, onChange, size = 'md' }: {
-  id: string; options: { value: V; label: string; icon?: ReactNode; title?: string }[]; value: V; onChange: (v: V) => void; size?: 'sm' | 'md';
+  id: string; options: { value: V; label: string; icon?: ReactNode; title?: string; disabled?: boolean }[]; value: V; onChange: (v: V) => void; size?: 'sm' | 'md';
 }) {
   return (
     <div role="tablist" className="flex items-center gap-[3px] p-[3px] rounded-lg border border-[var(--border-secondary)] bg-black/40">
       {options.map(o => {
         const on = o.value === value;
         return (
-          <button key={o.value} role="tab" aria-selected={on} onClick={() => onChange(o.value)} title={o.title}
-            className={`relative flex-1 flex items-center justify-center gap-1.5 ${size === 'sm' ? 'h-6 px-2 text-[8.5px]' : 'h-7 px-3 text-[9.5px]'} rounded-md font-mono font-medium tracking-[0.18em] uppercase whitespace-nowrap transition-colors duration-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${on ? 'text-[var(--gold-light)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}>
+          <button key={o.value} role="tab" aria-selected={on} onClick={() => onChange(o.value)} title={o.title} disabled={o.disabled}
+            className={`relative flex-1 flex items-center justify-center gap-1.5 disabled:opacity-35 disabled:pointer-events-none ${size === 'sm' ? 'h-6 px-2 text-[8.5px]' : 'h-7 px-3 text-[9.5px]'} rounded-md font-mono font-medium tracking-[0.18em] uppercase whitespace-nowrap transition-colors duration-200 focus:outline-none focus-visible:ring-1 focus-visible:ring-white/50 ${on ? 'text-[var(--gold-light)]' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}`}>
             {on && (
               <motion.span layoutId={`oi-seg-${id}`} transition={{ type: 'spring', stiffness: 420, damping: 34 }}
                 className="absolute inset-0 rounded-md border border-[var(--border-active)] bg-[var(--gold-primary)]/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_14px_var(--gold-glow)]" />

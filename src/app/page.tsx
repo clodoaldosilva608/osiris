@@ -48,6 +48,8 @@ import { useAssist } from '@/lib/oi/assist/client';
 import type { Highlight, Site } from '@/lib/oi/assist/tools';
 import { currentAnswer } from '@/lib/oi/state';
 import type { OiMode } from '@/components/OiPanel';
+import type { Stage } from '@/components/oi/Workspace';
+import { searchObjects, TYPE_LABEL, objectsOf } from '@/lib/oi/objects';
 import { workspaceInsets } from '@/lib/oi/layout';
 import type { OiGlobe, OiHover } from '@/lib/oi/globe';
 function useIsMobile() {
@@ -343,8 +345,10 @@ export default function Dashboard() {
   const [oiHover, setOiHover] = useState<OiHover | null>(null);
   const [oiFollowing, setOiFollowing] = useState(true);
   const [oiTheater, setOiTheater] = useState(false);
-  /** Assist (talk to OI) or Forecast (the swarm). */
-  const [oiMode, setOiMode] = useState<OiMode>('assist');
+  /** Forecast (the swarm, the default) or Assist (talk to OI). */
+  const [oiMode, setOiMode] = useState<OiMode>('forecast');
+  /** What the full-screen workspace's stage shows. */
+  const [oiStage, setOiStage] = useState<Stage>('globe');
   /** Whether the panel was opened from the keyboard, to type straight away. */
   const [oiAutoFocus, setOiAutoFocus] = useState(false);
   // A different run (or none) starts with nothing selected.
@@ -384,7 +388,8 @@ export default function Dashboard() {
   }, []);
   const followOi = useCallback(() => oiGlobe.current?.follow(true), []);
   // Full screen: the workspace's columns sit either side, and the globe stays centred on the stage between.
-  const oiTheaterOn = oiTheater && Boolean(oi.state);
+  const oiTheaterOn = oiTheater;
+  const oiHasRun = Boolean(oi.state);
   // On a phone the drawer covers the lower half: the globe, and anywhere OI flies to, centre in the space above it.
   const oiDrawerOpen = mobilePanel === 'oi';
   useEffect(() => {
@@ -394,7 +399,7 @@ export default function Dashboard() {
     return () => oiGlobe.current?.setInsets(null);
   }, [oiDrawerOpen]);
   useEffect(() => {
-    const inset = () => oiGlobe.current?.setInsets(oiTheaterOn ? workspaceInsets(window.innerWidth) : null);
+    const inset = () => oiGlobe.current?.setInsets(oiTheaterOn ? workspaceInsets(window.innerWidth, oiHasRun) : null);
     inset();
     // The app's own HUD (everything marked data-hud) steps back while the workspace has the screen.
     document.documentElement.toggleAttribute('data-oi-theater', oiTheaterOn);
@@ -403,7 +408,7 @@ export default function Dashboard() {
       window.removeEventListener('resize', inset);
       document.documentElement.removeAttribute('data-oi-theater');
     };
-  }, [oiTheaterOn]);
+  }, [oiTheaterOn, oiHasRun]);
   // A shared link (?oi=<run>) opens the panel on that run, and the camera
   // goes to the run rather than to the visitor's city.
   useEffect(() => {
@@ -529,6 +534,10 @@ export default function Dashboard() {
       if (panel === 'workspace' && assistOi.current.state && !phone) setOiTheater(true);
     }
   }, []);
+  const assistTheater = useRef(oiTheater);
+  const assistStage = useRef<Stage>(oiStage);
+  useEffect(() => { assistTheater.current = oiTheater; }, [oiTheater]);
+  useEffect(() => { assistStage.current = oiStage; }, [oiStage]);
   const assistSite = useMemo<Omit<Site, 'forecast'>>(() => ({
     data: () => dataRef.current,
     view: () => assistView.current,
@@ -549,6 +558,24 @@ export default function Dashboard() {
       }
       if (style) setMapStyle(style);
     },
+    workspace: ({ open, view }) => {
+      if (window.matchMedia('(max-width: 767px)').matches) return { ok: false, error: 'The full-screen workspace is for larger screens' };
+      const run = assistOi.current.state;
+      if (view && view !== 'globe' && !run) return { ok: false, error: `The ${view} needs a forecast: start one first` };
+      if (open === false) { setOiTheater(false); return { ok: true, summary: 'Closed the workspace' }; }
+      setShowOi(true);
+      setOiTheater(true);
+      if (view) setOiStage(view);
+      return { ok: true, summary: `Opened the workspace${view ? ` on the ${view}` : ''}` };
+    },
+    select: name => {
+      const run = assistOi.current.state;
+      if (!run) return { ok: false, error: 'There is no forecast to select from' };
+      const hit = searchObjects(run, name, 1)[0];
+      if (!hit) return { ok: false, error: `Nothing called "${name}" in this forecast` };
+      setOiSelected(hit.key);
+      return { ok: true, summary: `Opened ${hit.title} (${TYPE_LABEL[hit.type].toLowerCase()})` };
+    },
     geocode: async q => {
       try {
         const res = await fetch(`/api/geosearch?q=${encodeURIComponent(q)}`);
@@ -565,8 +592,12 @@ export default function Dashboard() {
     },
     forecastSummary: () => {
       const st = assistOi.current.state;
-      return st ? { question: st.question, status: st.status === 'running' ? st.phaseLabel || 'running' : st.status, answer: currentAnswer(st) } : null;
+      return st ? {
+        question: st.question, status: st.status === 'running' ? st.phaseLabel || 'running' : st.status, answer: currentAnswer(st),
+        objects: objectsOf(st).filter(o => o.type === 'actor' || o.type === 'panelist').map(o => o.title).slice(0, 40),
+      } : null;
     },
+    ui: () => ({ fullscreen: assistTheater.current, stage: assistStage.current }),
     onReply: text => {
       if (!assistVoice.current || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
       window.speechSynthesis.cancel();
@@ -1753,7 +1784,8 @@ export default function Dashboard() {
                 <OiPanel oi={oi} selected={oiSelected} onSelect={setOiSelected} onClose={() => { setShowOi(false); setOiTheater(false); setOiAutoFocus(false); }}
                   focus={oiFocus} onFocus={toggleOiFocus} onLocate={handleOiLocate}
                   theater={oiTheater} onTheater={setOiTheater} following={oiFollowing} onFollow={followOi}
-                  assist={assist} mode={oiMode} onMode={setOiMode} speakOn={oiVoice} onSpeak={setOiVoicePersist} autoFocus={oiAutoFocus} />
+                  assist={assist} mode={oiMode} onMode={setOiMode} speakOn={oiVoice} onSpeak={setOiVoicePersist} autoFocus={oiAutoFocus}
+                  stage={oiStage} onStage={setOiStage} />
               </motion.div>
             )}
           </AnimatePresence>
@@ -2142,7 +2174,8 @@ export default function Dashboard() {
                   {mobilePanel === 'oi' && (
                     <OiPanel oi={oi} selected={oiSelected} onSelect={setOiSelected} embedded focus={oiFocus} onFocus={toggleOiFocus}
                       onLocate={handleOiLocate} following={oiFollowing} onFollow={followOi}
-                      assist={assist} mode={oiMode} onMode={setOiMode} speakOn={oiVoice} onSpeak={setOiVoicePersist} />
+                      assist={assist} mode={oiMode} onMode={setOiMode} speakOn={oiVoice} onSpeak={setOiVoicePersist}
+                      stage={oiStage} onStage={setOiStage} />
                   )}
                   {mobilePanel === 'intel' && <IntelFeed data={data} onLocate={(lat, lng) => { setFlyToLocation({ lat, lng, ts: Date.now() }); setMobilePanel(null); }} />}
                   {mobilePanel === 'search' && (

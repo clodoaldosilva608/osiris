@@ -29,7 +29,7 @@ export function RunTabs(p: {
     { id: 'debate', label: 'Debate', count: s.posts.length || undefined },
     { id: 'panel', label: 'Panel', count: s.agents.length || undefined },
     { id: 'world', label: 'World', count: s.actors.length || undefined },
-    { id: 'ask', label: 'Ask' },
+    { id: 'ask', label: 'Q&A' },
   ];
   const current = tabs.some(t => t.id === tab) ? tab : 'debate';
   return (

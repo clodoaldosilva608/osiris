@@ -32,6 +32,8 @@ export interface AssistDeps {
   site: Omit<Site, 'forecast'>;
   startForecast: (question: string, depth: Depth, auth: Auth) => Promise<{ ok: true; id: string } | { ok: false; error: string }>;
   forecastSummary: () => AssistContext['forecast'];
+  /** Whether the workspace is open and what it shows. */
+  ui?: () => AssistContext['ui'];
   /** Called with OI's final words for a turn, e.g. to read them aloud. */
   onReply?: (text: string) => void;
 }
@@ -80,6 +82,7 @@ export function useAssist(deps: AssistDeps) {
       layersOn: Object.keys(LAYERS).filter(k => layers[k]),
       loaded: Object.fromEntries(FIND_LAYERS.map(l => [l, SOURCES[l].keys.reduce((n, k) => n + (Array.isArray(d[k]) ? (d[k] as unknown[]).length : 0), 0)])),
       forecast: forecastSummary(),
+      ui: depsRef.current.ui?.(),
     };
   }, []);
 

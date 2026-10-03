@@ -10,7 +10,7 @@
 import { createElement, useEffect, useRef, useState, type ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import {
-  ArrowUp, Compass, Eraser, ExternalLink, Globe2, Layers, List, Loader2, LocateFixed, MapPin, Mic, Navigation, Orbit, PanelRight,
+  ArrowUp, Compass, Eraser, ExternalLink, Globe2, Layers, LayoutDashboard, List, Loader2, LocateFixed, MapPin, Mic, MousePointerClick, Navigation, Orbit, PanelRight,
   RotateCcw, ScanSearch, Search, Square, TrendingUp, Volume2, VolumeX, X, type LucideProps,
 } from 'lucide-react';
 import type { OiClient } from '@/lib/oi/client';
@@ -24,7 +24,7 @@ import { canSpeak, useDictation } from './voice';
 
 const TOOL_ICON: Record<ToolName, typeof Navigation> = {
   go_to: Navigation, layers: Layers, find: Search, scan: ScanSearch, highlight: MapPin, show: List, markets: TrendingUp,
-  open: PanelRight, map_view: Globe2, forecast: Orbit, clear: Eraser,
+  open: PanelRight, map_view: Globe2, forecast: Orbit, workspace: LayoutDashboard, select: MousePointerClick, clear: Eraser,
 };
 
 function ToolIcon({ tool, ...rest }: LucideProps & { tool: ToolName }) {
@@ -47,6 +47,7 @@ const SUGGESTIONS: { group: string; mode: Mode; text: string }[] = [
   { group: 'Research', mode: 'research', text: 'What is happening in Sudan right now?' },
   { group: 'Research', mode: 'research', text: 'How are oil, gold and bitcoin trading?' },
   { group: 'Forecast', mode: 'forecast', text: 'Will OPEC+ announce a production cut before December 2026?' },
+  { group: 'Forecast', mode: 'auto', text: 'Open the workspace on the graph' },
 ];
 
 /** What an action is doing, in words, before its result says what it did. */
@@ -63,6 +64,8 @@ function describe(a: ActionView): string {
     case 'open': return `Open ${g('panel')}`;
     case 'map_view': return `Switch to ${[g('projection'), g('style')].filter(Boolean).join(', ')}`;
     case 'forecast': return `Forecast: ${g('question')}`;
+    case 'workspace': return a.args.open === false ? 'Close the workspace' : `Open the workspace${g('view') ? ` on the ${g('view')}` : ''}`;
+    case 'select': return `Open ${g('name')}`;
     case 'clear': return 'Clear the highlights';
   }
 }

@@ -26,8 +26,11 @@ export function workspaceLayout(width: number): WorkspaceLayout {
   };
 }
 
-/** The map padding that centres the globe on the stage. */
-export function workspaceInsets(width: number): { top: number; bottom: number; left: number; right: number } {
+/**
+ * The map padding that centres the globe on the stage. Without a forecast
+ * there is no right-hand column, and the stage runs to the edge.
+ */
+export function workspaceInsets(width: number, withRight = true): { top: number; bottom: number; left: number; right: number } {
   const l = workspaceLayout(width);
-  return { top: l.top - 8, bottom: l.gap + 8, left: l.left + l.gap * 2, right: l.right + l.gap * 2 };
+  return { top: l.top - 8, bottom: l.gap + 8, left: l.left + l.gap * 2, right: withRight ? l.right + l.gap * 2 : l.gap };
 }

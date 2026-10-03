@@ -300,3 +300,41 @@ describe('what is in view', () => {
     expect(JSON.parse(demoAssist('USER (mode auto): What am I looking at?')).actions).toEqual([{ tool: 'scan', args: {} }]);
   });
 });
+
+describe('driving the workspace', () => {
+  it('opens the workspace on a view and opens forecast objects by name, when the page allows', async () => {
+    const calls: unknown[] = [];
+    const { site } = fakeSite({
+      workspace: o => { calls.push(o); return o.view === 'graph' ? { ok: false, error: 'The graph needs a forecast: start one first' } : { ok: true, summary: `Opened the workspace${o.view ? ` on the ${o.view}` : ''}` }; },
+      select: name => (name === 'China' ? { ok: true, summary: 'Opened China (actor)' } : { ok: false, error: `Nothing called "${name}" in this forecast` }),
+    });
+    expect((await runCall({ tool: 'workspace', args: { open: true, view: 'timeline' } }, site)).result).toMatchObject({ ok: true, summary: 'Opened the workspace on the timeline' });
+    expect((await runCall({ tool: 'workspace', args: { view: 'graph' } }, site)).result).toMatchObject({ ok: false, summary: 'The graph needs a forecast: start one first' });
+    expect(calls).toEqual([{ open: true, view: 'timeline' }, { open: true, view: 'graph' }]);
+    expect((await runCall({ tool: 'workspace', args: { open: 'false' } }, site)).result.ok).toBe(true);
+    expect((await runCall({ tool: 'workspace', args: {} }, site)).result.ok).toBe(false);
+    expect((await runCall({ tool: 'select', args: { name: 'China' } }, site)).result).toMatchObject({ ok: true, summary: 'Opened China (actor)' });
+    expect((await runCall({ tool: 'select', args: { name: 'Mars' } }, site)).result.ok).toBe(false);
+    expect((await runCall({ tool: 'select', args: { name: 'China' } }, fakeSite().site)).result.ok).toBe(false);
+  });
+
+  it('tells the model what the workspace shows and what the forecast holds', () => {
+    const ctx = sanitizeContext({ ui: { fullscreen: true, stage: 'graph' }, forecast: { question: 'Will it?', status: 'done', answer: '44% YES', objects: ['China', 'Mara Ellison', 7] } }, new Date(NOW));
+    expect(ctx.ui).toEqual({ fullscreen: true, stage: 'graph' });
+    expect(ctx.forecast?.objects).toEqual(['China', 'Mara Ellison']);
+    const p = userPrompt([{ role: 'user', text: 'Open China', mode: 'auto' }], ctx);
+    expect(p).toContain('Its objects: China, Mara Ellison');
+    expect(p).toContain('Workspace: open, showing the graph');
+    expect(sanitizeContext({ ui: { stage: 'evil' } }).ui).toEqual({ fullscreen: false, stage: 'globe' });
+  });
+
+  it('opens the workspace and objects from plain words in the demo', () => {
+    const ask = (t: string) => JSON.parse(demoAssist(`USER (mode auto): ${t}`));
+    expect(ask('Open the workspace on the graph and open China').actions).toEqual([
+      { tool: 'workspace', args: { open: true, view: 'graph' } }, { tool: 'select', args: { name: 'China' } },
+    ]);
+    expect(ask('Close full screen').actions).toEqual([{ tool: 'workspace', args: { open: false } }]);
+    expect(ask('Show me the timeline').actions).toEqual([{ tool: 'workspace', args: { open: true, view: 'timeline' } }]);
+    expect(ask('Open Mara Ellison').actions).toEqual([{ tool: 'select', args: { name: 'Mara Ellison' } }]);
+  });
+});

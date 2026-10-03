@@ -2,15 +2,17 @@
 /**
  * OSIRIS OI: the panel.
  *
- * Two ways to use OI, on the reader's own model key. Assist is a conversation:
- * talk to OI and it works the map for you (flies there, switches layers,
- * finds what is live, marks it, puts it on screen, starts forecasts).
- * Forecast is the swarm: set up an engine, ask, follow the run, read the
- * report and question the panel. Full screen,
- * it opens the run's workspace (oi/Workspace): the assessment and its
- * execution trace, the globe, the research graph, the timeline and the object
- * tables, an object search, and a view for whatever is selected. Whatever is
- * selected, from the globe, the graph or a list, opens as that object.
+ * Two ways to use OI, on the reader's own model key. Forecast (the default)
+ * is the swarm: set up an engine, ask, follow the run, read the report and
+ * question the panel. Assist is a conversation: talk to OI and it works the
+ * map for you (flies there, switches layers, finds what is live, marks it,
+ * puts it on screen, starts forecasts, drives the workspace).
+ *
+ * Full screen, with or without a run, it opens the OI workspace
+ * (oi/Workspace): the same Forecast / Assist column on the left, the globe,
+ * research graph, timeline and object tables in the middle, and the run's
+ * lists and object views on the right. Whatever is selected, from the globe,
+ * the graph or a list, opens as that object.
  *
  * It wears the platform's own theme (oi/theme), so it is gold and cyan in
  * Core and violet in Ghost. The run itself lives in the page (useOi), so
@@ -31,7 +33,7 @@ import { AskForm, EnginePill, EngineSheet } from './oi/engine';
 import { InjectBox, RunHead, UsageLine, Verdict } from './oi/run';
 import { HistoryList, RunTabs, type Tab } from './oi/lists';
 import { ObjectView } from './oi/ObjectView';
-import { Workspace } from './oi/Workspace';
+import { Workspace, type Stage } from './oi/Workspace';
 
 export interface OiPanelProps {
   oi: OiClient;
@@ -61,9 +63,12 @@ export interface OiPanelProps {
   onSpeak: (on: boolean) => void;
   /** Put the cursor in the conversation's box when the panel opens. */
   autoFocus?: boolean;
+  /** What the workspace's stage shows (globe, graph, timeline, table). */
+  stage: Stage;
+  onStage: (s: Stage) => void;
 }
 
-export type OiMode = 'assist' | 'forecast';
+export type OiMode = 'forecast' | 'assist';
 
 /** The engine this browser last used, or OpenAI with its default model. */
 function initialEngine(): Engine {
@@ -110,12 +115,50 @@ export default function OiPanel(props: OiPanelProps) {
     />
   ) : null;
 
-  /* ── Full screen: the workspace ── */
-  if (theater && s && !embedded) {
+  const assistView = (
+    <AssistView assist={props.assist} oi={oi} ready={ready} providerName={info.name} onKey={() => setEngineOpen(true)}
+      onSend={(text, m) => void props.assist.send(text, m, { engine, key })}
+      onLocate={props.onLocate} onOpenForecast={() => props.onMode('forecast')}
+      onWorkspace={!embedded && !theater && props.onTheater ? () => props.onTheater?.(true) : undefined}
+      speakOn={props.speakOn} onSpeak={props.onSpeak} autoFocus={props.autoFocus} />
+  );
+
+  const askForm = (
+    <AskForm ready={ready} providerName={info.name} onKey={() => setEngineOpen(true)} onRun={async (input) => {
+      const id = await oi.start(input, engine, key);
+      if (id) { setShowHistory(false); setTab(null); onSelect(null); }
+      return Boolean(id);
+    }} />
+  );
+
+  /* ── Full screen: the workspace, with or without a run ── */
+  if (theater && !embedded) {
+    const engineMenu = (
+      <div className="relative">
+        <EnginePill engine={engine} ready={ready} open={engineOpen} onClick={() => setEngineOpen(v => !v)} />
+        <AnimatePresence>
+          {engineOpen && (
+            <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.15 }}
+              className="absolute right-0 top-[calc(100%+10px)] w-[380px] max-h-[70vh] overflow-y-auto styled-scrollbar rounded-lg border border-[var(--border-primary)] shadow-[0_18px_48px_rgba(0,0,0,0.7)] z-50"
+              style={{ background: 'var(--bg-panel-solid)' }}>
+              <EngineSheet engine={engine} setEngine={setEngine} keyValue={key} setKey={setKey} onDone={() => setEngineOpen(false)} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+    const askView = (
+      <>
+        {askForm}
+        {oi.history.length > 0 && <div className="border-t border-[var(--border-secondary)]"><HistoryList oi={oi} onPick={id => { setTab(null); onSelect(null); void oi.watch(id); }} /></div>}
+      </>
+    );
     const node = (
       <Workspace s={s} oi={oi} selected={selected} onSelect={onSelect} onLocate={props.onLocate} onAsk={askAgent}
         onTheater={props.onTheater} focus={props.focus} onFocus={props.onFocus} following={props.following} onFollow={props.onFollow}
-        lists={tabs} errorBox={errorBox} />
+        mode={props.mode} onMode={props.onMode} stage={props.stage} onStage={props.onStage}
+        lists={tabs} errorBox={errorBox} assistView={assistView} askView={askView} engineMenu={engineMenu}
+        onNewForecast={reset} assistBusy={props.assist.busy} />
     );
     return typeof document !== 'undefined' ? createPortal(node, document.body) : node;
   }
@@ -137,7 +180,7 @@ export default function OiPanel(props: OiPanelProps) {
         <EnginePill engine={engine} ready={ready} open={engineOpen} onClick={() => setEngineOpen(v => !v)} />
         {!assisting && <IconButton title={showHistory ? 'Back' : 'Your forecasts'} onClick={() => setShowHistory(v => !v)} active={showHistory}><History className="w-3.5 h-3.5" /></IconButton>}
         {!assisting && s && <IconButton title="New forecast" onClick={reset}><Plus className="w-3.5 h-3.5" /></IconButton>}
-        {!embedded && s && props.onTheater && <IconButton title="Open the workspace: globe, graph, timeline and tables" onClick={() => props.onTheater?.(true)}><Maximize2 className="w-3.5 h-3.5" /></IconButton>}
+        {!embedded && props.onTheater && <IconButton title="Full screen: the OI workspace" onClick={() => props.onTheater?.(true)}><Maximize2 className="w-3.5 h-3.5" /></IconButton>}
         {props.onClose && !embedded && <IconButton title="Close (the run keeps going)" onClick={props.onClose}><X className="w-3.5 h-3.5" /></IconButton>}
       </div>
     </header>
@@ -146,18 +189,10 @@ export default function OiPanel(props: OiPanelProps) {
   const modeSwitch = (
     <div className={embedded ? 'pb-3' : 'px-3 py-2 border-b border-[var(--border-secondary)]'}>
       <Segmented id={embedded ? 'oi-mode-m' : 'oi-mode'} size="sm" value={props.mode} onChange={props.onMode} options={[
-        { value: 'assist', label: 'Assist', icon: <MessageSquare className="w-3 h-3" />, title: 'Talk to OI: it works the map for you' },
         { value: 'forecast', label: s?.status === 'running' ? 'Forecast ●' : 'Forecast', icon: <Orbit className="w-3 h-3" />, title: 'The forecasting swarm' },
+        { value: 'assist', label: 'Assist', icon: <MessageSquare className="w-3 h-3" />, title: 'Talk to OI: it works the map for you' },
       ]} />
     </div>
-  );
-
-  const assistView = (
-    <AssistView assist={props.assist} oi={oi} ready={ready} providerName={info.name} onKey={() => setEngineOpen(true)}
-      onSend={(text, m) => void props.assist.send(text, m, { engine, key })}
-      onLocate={props.onLocate} onOpenForecast={() => props.onMode('forecast')}
-      onWorkspace={!embedded && props.onTheater ? () => props.onTheater?.(true) : undefined}
-      speakOn={props.speakOn} onSpeak={props.onSpeak} autoFocus={props.autoFocus} />
   );
 
   const body = assisting ? (
@@ -184,11 +219,7 @@ export default function OiPanel(props: OiPanelProps) {
       {showHistory ? (
         <HistoryList oi={oi} onPick={id => { setShowHistory(false); setTab(null); onSelect(null); void oi.watch(id); }} />
       ) : !s ? (
-        <AskForm ready={ready} providerName={info.name} onKey={() => setEngineOpen(true)} onRun={async (input) => {
-          const id = await oi.start(input, engine, key);
-          if (id) { setShowHistory(false); setTab(null); onSelect(null); }
-          return Boolean(id);
-        }} />
+        askForm
       ) : (
         <div className="flex flex-col">
           <div className="px-4 pt-4 pb-5 flex flex-col gap-5 border-b border-[var(--border-secondary)]">

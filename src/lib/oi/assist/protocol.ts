@@ -17,7 +17,7 @@
 import { extractJson } from '../parse';
 import { FIND_LAYERS, LAYERS, PANELS, SOURCES } from './catalog';
 
-export const TOOL_NAMES = ['go_to', 'layers', 'find', 'scan', 'highlight', 'show', 'markets', 'open', 'map_view', 'forecast', 'clear'] as const;
+export const TOOL_NAMES = ['go_to', 'layers', 'find', 'scan', 'highlight', 'show', 'markets', 'open', 'map_view', 'forecast', 'workspace', 'select', 'clear'] as const;
 export type ToolName = typeof TOOL_NAMES[number];
 
 /** What the reader asked OI to concentrate on. Auto lets the model choose. */
@@ -49,8 +49,10 @@ export interface AssistContext {
   layersOn: string[];
   /** How many of each searchable thing the page holds. */
   loaded: Partial<Record<string, number>>;
-  /** The forecast in the OI panel, if there is one. */
-  forecast?: { question: string; status: string; answer: string } | null;
+  /** The forecast in the OI panel, if there is one, with the names of its objects. */
+  forecast?: { question: string; status: string; answer: string; objects?: string[] } | null;
+  /** Whether the full-screen workspace is open, and what its stage shows. */
+  ui?: { fullscreen: boolean; stage: string };
 }
 
 /* ───────────── The tools, as the model reads them ───────────── */
@@ -91,6 +93,12 @@ map_view {projection?: "globe"|"flat", style?: "dark"|"satellite"}
 
 forecast {question, depth?: "quick"|"standard"|"deep"}
   Start an OI forecast: a simulated panel of AI forecasters debates the question over several rounds on live intelligence and writes a calibrated answer (a probability, shares per outcome, or an estimate with a range). It makes 15 to 70 model calls on the reader's key, so only when they ask for a forecast, prediction or odds, or chose Forecast mode. Phrase the question so it resolves by a date.
+
+workspace {open?: boolean, view?: "globe"|"graph"|"timeline"|"table"}
+  Open the full-screen OI workspace (open: false closes it) and choose what its centre shows: the live globe, or for the current forecast its research graph, the timeline of its debate, or tables of its objects. graph, timeline and table need a forecast.
+
+select {name}
+  Open an object of the current forecast by name: an actor, panelist, source, scenario or signpost (see the forecast's objects in CONTEXT). It opens in the object view and lights up on the globe and in the graph.
 
 clear {}
   Remove your highlights from the map.`;
@@ -145,6 +153,8 @@ function contextBlock(c: AssistContext): string {
     `Layers on: ${c.layersOn.length ? c.layersOn.join(', ') : 'none'}`,
     `Live data held: ${loaded || 'nothing yet'}`,
     c.forecast ? `OI forecast in the panel: "${clip(c.forecast.question, 160)}" (${c.forecast.status}${c.forecast.answer ? `, ${c.forecast.answer}` : ''})` : 'OI forecast in the panel: none',
+    ...(c.forecast?.objects?.length ? [`Its objects: ${c.forecast.objects.join(', ')}`] : []),
+    `Workspace: ${c.ui?.fullscreen ? `open, showing the ${c.ui.stage}` : 'closed'}`,
   ].join('\n');
 }
 
@@ -263,6 +273,8 @@ export function sanitizeContext(v: unknown, now = new Date()): AssistContext {
     }
   }
   const f = r.forecast && typeof r.forecast === 'object' ? r.forecast as Record<string, unknown> : null;
+  const ui = r.ui && typeof r.ui === 'object' ? r.ui as Record<string, unknown> : null;
+  const stages = ['globe', 'graph', 'timeline', 'table'];
   return {
     now: `${now.toISOString().slice(0, 16).replace('T', ' ')} UTC`,
     view: {
@@ -272,6 +284,10 @@ export function sanitizeContext(v: unknown, now = new Date()): AssistContext {
     },
     layersOn: Array.isArray(r.layersOn) ? r.layersOn.filter((k): k is string => typeof k === 'string' && k in LAYERS).slice(0, 40) : [],
     loaded,
-    forecast: f && typeof f.question === 'string' ? { question: prose(f.question, 300), status: prose(f.status, 40), answer: prose(f.answer, 80) } : null,
+    forecast: f && typeof f.question === 'string' ? {
+      question: prose(f.question, 300), status: prose(f.status, 40), answer: prose(f.answer, 80),
+      ...(Array.isArray(f.objects) ? { objects: f.objects.filter((o): o is string => typeof o === 'string').slice(0, 40).map(o => prose(o, 80)).filter(Boolean) } : {}),
+    } : null,
+    ui: { fullscreen: ui?.fullscreen === true, stage: stages.includes(ui?.stage as string) ? ui!.stage as string : 'globe' },
   };
 }

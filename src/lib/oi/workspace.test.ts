@@ -139,5 +139,6 @@ describe('the workspace geometry', () => {
     expect(workspaceLayout(2560)).toMatchObject({ left: 392, right: 440 });
     expect(workspaceLayout(NaN).left).toBe(346);
     expect(workspaceInsets(1440)).toEqual({ top: 76, bottom: 24, left: 378, right: 421 });
+    expect(workspaceInsets(1440, false)).toEqual({ top: 76, bottom: 24, left: 378, right: 16 });
   });
 });

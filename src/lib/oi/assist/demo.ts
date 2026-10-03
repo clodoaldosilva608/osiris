@@ -64,6 +64,16 @@ export function demoAssist(prompt: string): string {
   }
   if (/\b(clear|reset|remove)\b.*\b(highlights?|marks?|map)\b/.test(t)) return json('Cleared.', [{ tool: 'clear', args: {} }]);
   if (/what('s| is) (here|in view|on (the|my) screen|happening here)|what am i looking at|\bscan\b/.test(t)) return json('Looking at what is in view.', [{ tool: 'scan', args: {} }], false);
+  const view = t.match(/\b(graph|timeline|table)\b/)?.[1];
+  if (/\b(full ?screen|workspace)\b/.test(t) || (view && /\b(show|open|switch)\b/.test(t))) {
+    const close = /\b(close|exit|leave)\b/.test(t);
+    const actions: { tool: string; args: Record<string, unknown> }[] = [{ tool: 'workspace', args: close ? { open: false } : { open: true, ...(view ? { view } : {}) } }];
+    const pick = text.match(/\b(?:and )?(?:open|select)\s+(?!the (?:graph|timeline|table|workspace))([A-Z][\w'’.+-]*(?:\s+[A-Z][\w'’.+-]*){0,3})/)?.[1];
+    if (pick && !close) actions.push({ tool: 'select', args: { name: pick } });
+    return json(close ? 'Closing the workspace.' : `Opening the workspace${view ? ` on the ${view}` : ''}${pick ? ` with ${pick}` : ''}.`, actions);
+  }
+  const sel = text.match(/^(?:[Oo]pen|[Ss]elect|[Ss]how me)\s+([A-Z][\w'’.+-]*(?:\s+[A-Z][\w'’.+-]*){0,3})\s*$/)?.[1];
+  if (sel && !/\bon the map\b/.test(t)) return json(`Opening ${sel}.`, [{ tool: 'select', args: { name: sel } }]);
   if (/\bsatellite (view|map|basemap)\b/.test(t)) return json('Switching to the satellite basemap.', [{ tool: 'map_view', args: { style: 'satellite' } }]);
   if (/\bflat map\b|\b2d\b/.test(t)) return json('Switching to the flat map.', [{ tool: 'map_view', args: { projection: 'flat' } }]);
   if (/\b(markets?|stocks?|oil|brent|gold|bitcoin|btc|s&p|nasdaq|prices?)\b/.test(t)) {
