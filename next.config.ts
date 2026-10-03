@@ -11,6 +11,8 @@ const ALLOWED_ORIGINS = [
   "https://centrodesobrevivencia.vercel.app",
   "https://centrodesobrevivencia.app",
   "https://centrodesobrevivencia-lovable.vercel.app",
+  // Manual do Sobrevivente — incorpora o globo OSIRIS na "Visão Osiris"
+  "https://manual-do-sobrevivente.vercel.app",
   // Preview branches da Vercel (centrodesobrevivencia-*-clodoaldo608-*.vercel.app)
   // — cobertura broad via regex abaixo; mantemos também os literais.
   "http://localhost:8080",
@@ -24,6 +26,8 @@ function corsFor(origin: string | undefined): string | null {
     ALLOWED_ORIGINS.includes(origin) ||
     // preview branches da Vercel do Centro de Sobrevivência
     /^https:\/\/centrodesobrevivencia-[a-z0-9]+-clodoaldo608-gmailcoms-projects\.vercel\.app$/.test(origin) ||
+    // preview branches da Vercel do Manual do Sobrevivente
+    /^https:\/\/manual-do-sobrevivente-[a-z0-9]+-clodoaldo608-gmailcoms-projects\.vercel\.app$/.test(origin) ||
     // preview branches da Vercel do próprio OSIRIS (para dev)
     /^https:\/\/osiris-[a-z0-9]+-clodoaldo608-gmailcoms-projects\.vercel\.app$/.test(origin);
   return isAllowed ? origin : null;
