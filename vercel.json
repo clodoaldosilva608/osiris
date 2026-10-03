@@ -5,7 +5,6 @@
   "installCommand": "npm install",
   "devCommand": "npm run dev",
   "target": "production",
-  "regions": ["sao1"],
   "github": {
     "enabled": true,
     "silent": true
