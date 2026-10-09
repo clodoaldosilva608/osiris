@@ -9,15 +9,17 @@ const ALLOWED_ORIGINS = new Set([
   "https://centrodesobrevivencia.vercel.app",
   "https://centrodesobrevivencia.app",
   "https://centrodesobrevivencia-lovable.vercel.app",
-  // Manual do Sobrevivente — incorpora o globo OSIRIS na "Visão Osiris"
+  // Manual do Sobrevivente — incorpora o globo OSIRIS na "Visão Osiris".
+  // Com hífens (alias histórico) e sem hífens (URL oficial de produção).
   "https://manual-do-sobrevivente.vercel.app",
+  "https://manualdosobrevivente.vercel.app",
   "http://localhost:8080",
   "http://localhost:4173",
   "http://localhost:3000",
 ]);
 
-/** Padrão regex para preview branches da Vercel do Centro de Sobrevivência, do próprio OSIRIS e do Manual do Sobrevivente. */
-const PREVIEW_RE = /^https:\/\/(centrodesobrevivencia|osiris|manual-do-sobrevivente)-[a-z0-9]+-clodoaldo608-gmailcoms-projects\.vercel\.app$/;
+/** Padrão regex para preview branches da Vercel do Centro de Sobrevivência, do próprio OSIRIS e do Manual do Sobrevivente (domínio com e sem hífens). */
+const PREVIEW_RE = /^https:\/\/(centrodesobrevivencia|osiris|manual-do-sobrevivente|manualdosobrevivente)-[a-z0-9]+-clodoaldo608-gmailcoms-projects\.vercel\.app$/;
 
 function echoOrigin(origin: string | null): string | null {
   if (!origin) return null;
